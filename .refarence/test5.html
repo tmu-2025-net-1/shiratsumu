@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Grid-Style ASCII QR Generator</title>
+<!-- QR code generator library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<!-- P5.js library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+<style>
+    body{
+        margin:0;
+        padding:0;
+        background:#000;
+        overflow:hidden;
+    }
+    #controls{
+        position:fixed;
+        top:10px;
+        right:10px;
+        background:rgba(0,0,0,0.8);
+        color:white;
+        padding:10px;
+        border-radius:8px;
+        font-size:12px;
+        z-index:1000;
+        max-width:250px;
+        display:none;
+        pointer-events:auto;
+    }
+    #controls.show{
+        display:block;
+        pointer-events:auto;
+    }
+    #controls label{
+        display:block;
+        margin-bottom:5px;
+        font-weight:600;
+        pointer-events:auto;
+    }
+    #controls input, #controls select, #controls textarea{
+        width:100%;
+        padding:3px;
+        margin-bottom:8px;
+        border:1px solid #666;
+        border-radius:4px;
+        font-size:11px;
+        pointer-events:auto;
+    }
+    #controls button{
+        padding:5px 8px;
+        border:none;
+        border-radius:4px;
+        background:#0070f3;
+        color:#fff;
+        font-size:11px;
+        cursor:pointer;
+        margin-right:5px;
+        pointer-events:auto;
+    }
+    #controls button:hover{
+        background:#0059c9;
+    }
+    #toggleControls{
+        position:fixed;
+        top:10px;
+        right:10px;
+        background:rgba(0,0,0,0.8);
+        color:white;
+        border:none;
+        padding:8px 12px;
+        border-radius:4px;
+        cursor:pointer;
+        z-index:1001;
+        font-size:12px;
+        pointer-events:auto;
+    }
+    canvas{
+        display:block;
+        pointer-events:auto;
+    }
+    #qrContainer{
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+    }
+    h1, footer{
+        display:none;
+    }
+</style>
+</head>
+<body>
+<button id="toggleControls">⚙️ Settings</button>
+<div id="controls">
+    <div>
+        <label for="qrText">Text to encode</label>
+        <textarea id="qrText" rows="2" placeholder="Enter text...">hello world</textarea>
+    </div>
+    <div>
+        <label for="cellSize">Cell size: <span id="cellSizeLabel">20</span>px</label>
+        <input type="range" id="cellSize" min="8" max="48" value="20">
+
+        <label for="fontSize">Font size: <span id="fontSizeLabel">20</span>px</label>
+        <input type="range" id="fontSize" min="6" max="32" value="20">
+
+        <label for="ecLevel">Error correction</label>
+        <select id="ecLevel">
+            <option value="L">L (7%)</option>
+            <option value="M" selected>M (15%)</option>
+            <option value="Q">Q (25%)</option>
+            <option value="H">H (30%)</option>
+        </select>
+
+        <label for="backgroundEffect">Background</label>
+        <select id="backgroundEffect">
+            <option value="none">None</option>
+            <option value="staticGrid" selected>Static Grid</option>
+            <option value="animatedGrid">Animated Grid</option>
+            <option value="matrixGrid">Matrix Grid</option>
+            <option value="neonGrid">Neon Grid</option>
+        </select>
+
+        <label for="interactivity">Interaction</label>
+        <select id="interactivity">
+            <option value="none">None</option>
+            <option value="hover" selected>Hover</option>
+            <option value="ripple">Ripple</option>
+            <option value="glow">Glow</option>
+        </select>
+
+        <label for="charSet">Characters</label>
+        <input type="text" id="charSet" value="ABCあいうえ◯▼잘자WXYZ0123456789">
+
+        <label for="animationSpeed">Speed: <span id="animationSpeedLabel">0</span></label>
+        <input type="range" id="animationSpeed" min="0" max="100" value="0">
+
+        <button id="generateBtn">Generate</button>
+        <button id="downloadBtn">Download</button>
+    </div>
+</div>
+<div id="qrContainer"></div>
+<h1>Grid-Style ASCII QR Code Generator</h1>
+<footer>
+    <p>&copy; 2025 Grid ASCII QR Generator</p>
+</footer>
+
+<script>
+// P5.js sketch for grid-style ASCII QR code
+let qrSketch = function(p) {
+  // Store the p5 instance globally
+  window.p5QR = window.p5QR || {};
+  window.p5QR.p5Instance = p;
+  
+  let qrData = null;
+  let cellSize = 20;
+  let fontSize = 20;
+  let animationSpeed = 0;
+  let isAnimating = false;
+  let backgroundEffect = 'staticGrid';
+  let interactivity = 'hover';
+  let charSet = "ABCあいうえ◯▼잘자WXYZ0123456789";
+  let backgroundGrid = [];
+  let ripples = [];
+  let time = 0;
+  let gridSize = 25;
+  let gridCols, gridRows;
+  
+  p.setup = function() {
+    console.log("P5.js setup started");
+    let canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+    canvas.parent('qrContainer');
+    p.textAlign(p.CENTER, p.CENTER);
+    p.textFont('monospace');
+    
+    // Make sure canvas doesn't interfere with UI controls
+    canvas.style('z-index', '1');
+    canvas.style('pointer-events', 'auto');
+    
+    // Initialize background grid
+    initBackgroundGrid();
+    
+    // Generate initial QR code
+    generateQR();
+    
+    console.log("P5.js setup completed");
+    console.log("Canvas created:", canvas);
+    console.log("window.p5QR after setup:", window.p5QR);
+  };
+  
+  p.windowResized = function() {
+    p.resizeCanvas(p.windowWidth, p.windowHeight);
+    initBackgroundGrid();
+  };
+  
+  p.draw = function() {
+    // Update time based on animation speed
+    if (animationSpeed > 0) {
+      time += 0.01 + (animationSpeed / 100) * 0.05;
+    } else {
+      time += 0.005; // Very slow movement even when stopped
+    }
+    
+    // Clear background - white background
+    p.background(255, 255, 255);
+    
+    // Draw background grid effect
+    drawBackgroundGrid();
+    
+    // Draw QR code
+    if (qrData) {
+      drawQR();
+    }
+    
+    // Draw ripples
+    drawRipples();
+    
+    // Update ripples
+    updateRipples();
+  };
+  
+  function initBackgroundGrid() {
+    backgroundGrid = [];
+    // Use the same grid size as QR cell size for perfect alignment
+    gridSize = cellSize;
+    gridCols = Math.floor(p.width / gridSize);
+    gridRows = Math.floor(p.height / gridSize);
+    
+    // Get current character set
+    const currentCharSet = document.getElementById("charSet") ? 
+                          document.getElementById("charSet").value : 
+                          charSet;
+    
+    for (let i = 0; i < gridCols; i++) {
+      backgroundGrid[i] = [];
+      for (let j = 0; j < gridRows; j++) {
+        backgroundGrid[i][j] = {
+          char: currentCharSet[Math.floor(p.random(currentCharSet.length))],
+          alpha: p.random(15, 50),
+          phase: p.random(p.TWO_PI),
+          speed: p.random(0.01, 0.05),
+          baseSize: p.random(fontSize * 0.4, fontSize * 0.8),
+          active: p.random() > 0.7
+        };
+      }
+    }
+  }
+  
+  function drawBackgroundGrid() {
+    if (backgroundEffect === 'none') return;
+    
+    p.push();
+    
+    if (backgroundEffect === 'staticGrid') {
+      // Static grid with ASCII characters - aligned with QR cells
+      p.stroke(220, 220, 220, 80);
+      p.strokeWeight(0.2);
+      
+      // Draw grid lines aligned with QR cells
+      for (let x = 0; x <= p.width; x += cellSize) {
+        p.line(x, 0, x, p.height);
+      }
+      for (let y = 0; y <= p.height; y += cellSize) {
+        p.line(0, y, p.width, y);
+      }
+      
+      // Draw grid characters
+      for (let i = 0; i < gridCols; i++) {
+        for (let j = 0; j < gridRows; j++) {
+          let x = i * cellSize + cellSize / 2;
+          let y = j * cellSize + cellSize / 2;
+          let cell = backgroundGrid[i][j];
+          
+          // Mouse interaction with grid
+          let mouseDistance = p.dist(p.mouseX, p.mouseY, x, y);
+          let influence = p.map(mouseDistance, 0, 100, 1, 0);
+          influence = p.constrain(influence, 0, 1);
+          
+          let alpha = cell.alpha + influence * 60;
+          let size = cell.baseSize + influence * 3;
+          
+          p.fill(160, 160, 160, alpha);
+          p.textSize(size);
+          p.text(cell.char, x, y);
+        }
+      }
+      
+    } else if (backgroundEffect === 'animatedGrid') {
+      // Animated grid with pulsing characters - aligned with QR cells
+      p.stroke(220, 220, 220, 60);
+      p.strokeWeight(0.15);
+      
+      // Draw grid lines aligned with QR cells
+      for (let x = 0; x <= p.width; x += cellSize) {
+        p.line(x, 0, x, p.height);
+      }
+      for (let y = 0; y <= p.height; y += cellSize) {
+        p.line(0, y, p.width, y);
+      }
+      
+      // Draw animated characters
+      for (let i = 0; i < gridCols; i++) {
+        for (let j = 0; j < gridRows; j++) {
+          let x = i * cellSize + cellSize / 2;
+          let y = j * cellSize + cellSize / 2;
+          let cell = backgroundGrid[i][j];
+          
+          if (cell.active) {
+            let pulse = p.sin(time * 2 + cell.phase) * 0.5 + 0.5;
+            let alpha = cell.alpha + pulse * 40;
+            let size = cell.baseSize + pulse * 2;
+            
+            // Mouse interaction
+            let mouseDistance = p.dist(p.mouseX, p.mouseY, x, y);
+            let influence = p.map(mouseDistance, 0, 80, 1, 0);
+            influence = p.constrain(influence, 0, 1);
+            
+            alpha += influence * 60;
+            size += influence * 4;
+            
+            p.fill(140, 140, 140, alpha);
+            p.textSize(size);
+            p.text(cell.char, x, y);
+          }
+        }
+      }
+      
+    } else if (backgroundEffect === 'matrixGrid') {
+      // Matrix-style falling characters - aligned with QR cells
+      p.stroke(0, 255, 0, 20);
+      p.strokeWeight(0.15);
+      
+      // Vertical lines aligned with QR cells
+      for (let x = 0; x <= p.width; x += cellSize) {
+        p.line(x, 0, x, p.height);
+      }
+      
+      for (let i = 0; i < gridCols; i++) {
+        for (let j = 0; j < gridRows; j++) {
+          let x = i * cellSize + cellSize / 2;
+          let y = j * cellSize + cellSize / 2;
+          let cell = backgroundGrid[i][j];
+          
+          // Create matrix effect
+          let trail = (j / gridRows) * 255;
+          let alpha = cell.alpha + p.sin(time * 3 + j * 0.2) * 20;
+          
+          // Mouse interaction
+          let mouseDistance = p.dist(p.mouseX, p.mouseY, x, y);
+          let influence = p.map(mouseDistance, 0, 120, 1, 0);
+          influence = p.constrain(influence, 0, 1);
+          
+          alpha += influence * 100;
+          
+          p.fill(0, 255, 100, alpha);
+          p.textSize(cell.baseSize);
+          p.text(cell.char, x, y);
+        }
+      }
+      
+    } else if (backgroundEffect === 'neonGrid') {
+      // Neon-style glowing grid - aligned with QR cells
+      p.stroke(0, 255, 255, 60);
+      p.strokeWeight(0.8);
+      
+      // Draw glowing grid lines aligned with QR cells
+      for (let x = 0; x <= p.width; x += cellSize) {
+        p.line(x, 0, x, p.height);
+      }
+      for (let y = 0; y <= p.height; y += cellSize) {
+        p.line(0, y, p.width, y);
+      }
+      
+      // Draw neon characters
+      for (let i = 0; i < gridCols; i++) {
+        for (let j = 0; j < gridRows; j++) {
+          let x = i * cellSize + cellSize / 2;
+          let y = j * cellSize + cellSize / 2;
+          let cell = backgroundGrid[i][j];
+          
+          if (cell.active) {
+            let glow = p.sin(time * 1.5 + cell.phase) * 0.3 + 0.7;
+            
+            // Mouse interaction
+            let mouseDistance = p.dist(p.mouseX, p.mouseY, x, y);
+            let influence = p.map(mouseDistance, 0, 100, 1, 0);
+            influence = p.constrain(influence, 0, 1);
+            
+            glow += influence * 0.6;
+            
+            // Draw glow effect
+            p.fill(255, 0, 255, glow * 120);
+            p.textSize(cell.baseSize + 2);
+            p.text(cell.char, x, y);
+            
+            // Draw inner bright character
+            p.fill(255, 255, 255, glow * 160);
+            p.textSize(cell.baseSize);
+            p.text(cell.char, x, y);
+          }
+        }
+      }
+    }
+    
+    p.pop();
+  }
+  
+  function drawQR() {
+    if (!qrData) return;
+    
+    const { qr, modules } = qrData;
+    
+    // Center the QR code and align with background grid
+    let qrSize = modules * cellSize;
+    let offsetX = (p.width - qrSize) / 2;
+    let offsetY = (p.height - qrSize) / 2;
+    
+    // Snap to grid alignment
+    offsetX = Math.round(offsetX / cellSize) * cellSize;
+    offsetY = Math.round(offsetY / cellSize) * cellSize;
+    
+    p.push();
+    p.translate(offsetX, offsetY);
+    
+    // QR code blends seamlessly with background - no separate background
+    for (let r = 0; r < modules; r++) {
+      for (let c = 0; c < modules; c++) {
+        let isDark = qr.isDark(r, c);
+        let x = c * cellSize;
+        let y = r * cellSize;
+        
+        // Mouse interaction
+        let mouseDistance = p.dist(p.mouseX - offsetX, p.mouseY - offsetY, x + cellSize/2, y + cellSize/2);
+        let cellInfluence = 0;
+        
+        if (interactivity === 'hover' && mouseDistance < cellSize * 2) {
+          cellInfluence = p.map(mouseDistance, 0, cellSize * 2, 1, 0);
+        } else if (interactivity === 'glow' && mouseDistance < cellSize * 3) {
+          cellInfluence = p.map(mouseDistance, 0, cellSize * 3, 0.8, 0);
+        }
+        
+        // More seamless colors - subtle difference from background
+        let bgColor, fgColor;
+        if (isDark) {
+          bgColor = p.color(0, 0, 0); // Black background for dark cells
+          fgColor = p.color(255, 255, 255, 220); // White characters
+        } else {
+          bgColor = p.color(255, 255, 255); // White background for light cells
+          fgColor = p.color(150, 150, 150, 60); // Very light gray characters
+        }
+        
+        if (cellInfluence > 0) {
+          if (isDark) {
+            bgColor = p.lerpColor(p.color(0, 0, 0), p.color(50, 50, 150), cellInfluence);
+            fgColor = p.lerpColor(p.color(255, 255, 255, 220), p.color(255, 255, 100), cellInfluence);
+          } else {
+            bgColor = p.lerpColor(p.color(255, 255, 255), p.color(200, 200, 255), cellInfluence);
+            fgColor = p.lerpColor(p.color(150, 150, 150, 60), p.color(50, 50, 200), cellInfluence);
+          }
+        }
+        
+        // Draw background
+        p.fill(bgColor);
+        p.noStroke();
+        p.rect(x, y, cellSize, cellSize);
+        
+        // Draw character
+        let charIndex = isAnimating ? 
+          Math.floor(p.random(charSet.length)) : 
+          (r * modules + c) % charSet.length;
+        let ch = charSet[charIndex];
+        
+        p.fill(fgColor);
+        p.textSize(fontSize + cellInfluence * 4);
+        p.text(ch, x + cellSize/2, y + cellSize/2);
+      }
+    }
+    
+    p.pop();
+  }
+  
+  function drawRipples() {
+    for (let ripple of ripples) {
+      p.push();
+      p.noFill();
+      p.stroke(100, 200, 255, ripple.alpha);
+      p.strokeWeight(2);
+      p.ellipse(ripple.x, ripple.y, ripple.size, ripple.size);
+      p.pop();
+    }
+  }
+  
+  function updateRipples() {
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      let ripple = ripples[i];
+      ripple.size += ripple.speed;
+      ripple.alpha -= ripple.decay;
+      
+      if (ripple.alpha <= 0) {
+        ripples.splice(i, 1);
+      }
+    }
+  }
+  
+  p.mousePressed = function() {
+    // Check if mouse is over controls panel
+    const controls = document.getElementById('controls');
+    const toggleBtn = document.getElementById('toggleControls');
+    const controlsRect = controls.getBoundingClientRect();
+    const toggleRect = toggleBtn.getBoundingClientRect();
+    
+    // If controls are visible and mouse is over them, don't handle the event
+    if (controls.classList.contains('show') && 
+        p.mouseX >= controlsRect.left && p.mouseX <= controlsRect.right &&
+        p.mouseY >= controlsRect.top && p.mouseY <= controlsRect.bottom) {
+      return true; // Allow normal DOM event handling
+    }
+    
+    // If mouse is over toggle button, don't handle the event
+    if (p.mouseX >= toggleRect.left && p.mouseX <= toggleRect.right &&
+        p.mouseY >= toggleRect.top && p.mouseY <= toggleRect.bottom) {
+      return true; // Allow normal DOM event handling
+    }
+    
+    // Handle ripple effect only if not over controls
+    if (interactivity === 'ripple') {
+      ripples.push({
+        x: p.mouseX,
+        y: p.mouseY,
+        size: 0,
+        speed: 8,
+        alpha: 255,
+        decay: 5
+      });
+    }
+    return false;
+  };
+  
+  // Public methods
+  window.p5QR = {
+    p5Instance: p, // Store p5 instance reference
+    generateQR: function() {
+      console.log("generateQR called");
+      generateQR();
+    },
+    updateSettings: function(settings) {
+      cellSize = settings.cellSize;
+      fontSize = settings.fontSize;
+      animationSpeed = settings.animationSpeed;
+      backgroundEffect = settings.backgroundEffect;
+      interactivity = settings.interactivity;
+      charSet = settings.charSet;
+      
+      // Always reinitialize grid when settings change
+      initBackgroundGrid();
+      
+      isAnimating = animationSpeed > 0;
+    },
+    downloadImage: function() {
+      console.log("downloadImage method called");
+      console.log("p instance:", p);
+      try {
+        p.save('grid_ascii_qr.png');
+        console.log("p.save() called successfully");
+      } catch (error) {
+        console.error("Error in downloadImage:", error);
+      }
+    }
+  };
+  
+  console.log("window.p5QR object created:", window.p5QR);
+  
+  function generateQR() {
+    const text = document.getElementById("qrText").value.trim() || " ";
+    const ec = document.getElementById("ecLevel").value;
+    const qr = qrcode(0, ec);
+    qr.addData(text);
+    qr.make();
+    
+    const modules = qr.getModuleCount();
+    qrData = { qr: qr, modules: modules };
+    
+    // No need to resize canvas - it fills the screen
+    initBackgroundGrid();
+  }
+};
+
+// Initialize P5 sketch
+new p5(qrSketch);
+
+// Toggle controls visibility
+document.getElementById('toggleControls').addEventListener('click', function() {
+  const controls = document.getElementById('controls');
+  controls.classList.toggle('show');
+});
+
+// DOM interaction
+const $ = id => document.getElementById(id);
+const rngCellSize = $("cellSize");
+const rngFontSize = $("fontSize");
+const rngAnimationSpeed = $("animationSpeed");
+const lblCellSize = $("cellSizeLabel");
+const lblFontSize = $("fontSizeLabel");
+const lblAnimationSpeed = $("animationSpeedLabel");
+const selBackgroundEffect = $("backgroundEffect");
+const selInteractivity = $("interactivity");
+const txtCharSet = $("charSet");
+
+function updateLabels(){
+  lblCellSize.textContent = rngCellSize.value;
+  lblFontSize.textContent = rngFontSize.value;
+  lblAnimationSpeed.textContent = rngAnimationSpeed.value;
+}
+updateLabels();
+
+function updateP5Settings() {
+  if (window.p5QR) {
+    window.p5QR.updateSettings({
+      cellSize: parseInt(rngCellSize.value, 10),
+      fontSize: parseInt(rngFontSize.value, 10),
+      animationSpeed: parseInt(rngAnimationSpeed.value, 10),
+      backgroundEffect: selBackgroundEffect.value,
+      interactivity: selInteractivity.value,
+      charSet: txtCharSet.value || "ABCあいうえ◯▼잘자WXYZ0123456789"
+    });
+  }
+}
+
+// Event listeners
+rngCellSize.addEventListener("input", () => {
+  updateLabels();
+  updateP5Settings();
+});
+
+rngFontSize.addEventListener("input", () => {
+  updateLabels();
+  updateP5Settings();
+});
+
+rngAnimationSpeed.addEventListener("input", () => {
+  updateLabels();
+  updateP5Settings();
+});
+
+selBackgroundEffect.addEventListener("change", updateP5Settings);
+selInteractivity.addEventListener("change", updateP5Settings);
+txtCharSet.addEventListener("input", updateP5Settings);
+
+$("generateBtn").addEventListener("click", () => {
+  if (window.p5QR) {
+    window.p5QR.generateQR();
+  }
+});
+
+$("downloadBtn").addEventListener("click", () => {
+  console.log("Download button clicked");
+  console.log("window.p5QR:", window.p5QR);
+  console.log("window.p5QR.p5Instance:", window.p5QR ? window.p5QR.p5Instance : "p5QR not found");
+  
+  // P5.js canvas download
+  if (window.p5QR && window.p5QR.p5Instance) {
+    console.log("Attempting to save with p5Instance.save()");
+    try {
+      window.p5QR.p5Instance.save('grid_ascii_qr.png');
+      console.log("Save method called successfully");
+    } catch (error) {
+      console.error("Error during save:", error);
+    }
+  } else {
+    console.error("p5QR or p5Instance not available");
+    
+    // Fallback: try using the downloadImage method
+    if (window.p5QR && window.p5QR.downloadImage) {
+      console.log("Trying downloadImage method as fallback");
+      try {
+        window.p5QR.downloadImage();
+        console.log("downloadImage method called successfully");
+      } catch (error) {
+        console.error("Error during downloadImage:", error);
+      }
+    } else {
+      console.error("No download methods available");
+    }
+  }
+});
+</script>
+</body>
+</html>
