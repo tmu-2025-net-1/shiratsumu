@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
+  import { goto } from '$app/navigation';
   import { type ComponentType } from 'svelte';
   import type p5 from 'p5';
   import qrcode from 'qrcode-generator';
@@ -17,11 +18,17 @@
   let backgroundEffect = 'staticGrid';
   let interactivity = 'hover';
   let charSet = "ABCあいうえ◯▼잘자WXYZ0123456789";
-  let qrText = "hello world";
+  let qrText = "river";
   let ecLevel = "M";
   
   // Show controls toggle
   let showControls = false;
+  
+  // Grid-based text input
+  let editingMode = false;
+  let editingIndex = -1;
+  let inputTextArray: string[] = [];
+  let hiddenInputElement: HTMLInputElement;
 
   onMount(() => {
     let cleanup = () => {};
@@ -151,6 +158,33 @@
         
         p.push();
         
+        // Get navigation button position to skip drawing character there
+        let navButtonGridCol = -1, navButtonGridRow = -1;
+        let textInputStartCol = -1, textInputStartRow = -1;
+        let generateButtonCol = -1, generateButtonRow = -1;
+        
+        if (qrData) {
+          const qrSize = qrData.modules * cellSize;
+          const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+          const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+          
+          // Navigation button (below QR code)
+          const navRow = Math.floor((offsetY + qrSize) / cellSize) + 2;
+          const navCol = Math.floor(offsetX / cellSize) + Math.floor(qrData.modules / 2);
+          navButtonGridCol = navCol;
+          navButtonGridRow = navRow;
+          
+          // Text input area (above QR code)
+          const textInputRow = Math.floor(offsetY / cellSize) - 2;
+          const textInputStartColNum = Math.floor(offsetX / cellSize);
+          textInputStartCol = textInputStartColNum;
+          textInputStartRow = textInputRow;
+          
+          // Generate button (below text input)
+          generateButtonCol = textInputStartColNum + Math.floor(qrData.modules / 2);
+          generateButtonRow = textInputRow + 1;
+        }
+        
         if (backgroundEffect === 'staticGrid') {
           // Static grid with ASCII characters - aligned with QR cells
           p.stroke(220, 220, 220, 80);
@@ -167,6 +201,22 @@
           // Draw grid characters
           for (let i = 0; i < gridCols; i++) {
             for (let j = 0; j < gridRows; j++) {
+              // Skip drawing character at special positions
+              if (i === navButtonGridCol && j === navButtonGridRow) continue;
+              if (i === generateButtonCol && j === generateButtonRow) continue;
+              
+              // Skip text input area
+              let isTextInputArea = false;
+              if (textInputStartRow >= 0 && j === textInputStartRow) {
+                for (let k = 0; k < inputTextArray.length + 1; k++) {
+                  if (i === textInputStartCol + k) {
+                    isTextInputArea = true;
+                    break;
+                  }
+                }
+              }
+              if (isTextInputArea) continue;
+              
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
               let cell = backgroundGrid[i][j];
@@ -200,6 +250,22 @@
           // Draw animated characters
           for (let i = 0; i < gridCols; i++) {
             for (let j = 0; j < gridRows; j++) {
+              // Skip drawing character at special positions
+              if (i === navButtonGridCol && j === navButtonGridRow) continue;
+              if (i === generateButtonCol && j === generateButtonRow) continue;
+              
+              // Skip text input area
+              let isTextInputArea = false;
+              if (textInputStartRow >= 0 && j === textInputStartRow) {
+                for (let k = 0; k < inputTextArray.length + 1; k++) {
+                  if (i === textInputStartCol + k) {
+                    isTextInputArea = true;
+                    break;
+                  }
+                }
+              }
+              if (isTextInputArea) continue;
+              
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
               let cell = backgroundGrid[i][j];
@@ -235,6 +301,22 @@
           
           for (let i = 0; i < gridCols; i++) {
             for (let j = 0; j < gridRows; j++) {
+              // Skip drawing character at special positions
+              if (i === navButtonGridCol && j === navButtonGridRow) continue;
+              if (i === generateButtonCol && j === generateButtonRow) continue;
+              
+              // Skip text input area
+              let isTextInputArea = false;
+              if (textInputStartRow >= 0 && j === textInputStartRow) {
+                for (let k = 0; k < inputTextArray.length + 1; k++) {
+                  if (i === textInputStartCol + k) {
+                    isTextInputArea = true;
+                    break;
+                  }
+                }
+              }
+              if (isTextInputArea) continue;
+              
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
               let cell = backgroundGrid[i][j];
@@ -271,6 +353,22 @@
           // Draw neon characters
           for (let i = 0; i < gridCols; i++) {
             for (let j = 0; j < gridRows; j++) {
+              // Skip drawing character at special positions
+              if (i === navButtonGridCol && j === navButtonGridRow) continue;
+              if (i === generateButtonCol && j === generateButtonRow) continue;
+              
+              // Skip text input area
+              let isTextInputArea = false;
+              if (textInputStartRow >= 0 && j === textInputStartRow) {
+                for (let k = 0; k < inputTextArray.length + 1; k++) {
+                  if (i === textInputStartCol + k) {
+                    isTextInputArea = true;
+                    break;
+                  }
+                }
+              }
+              if (isTextInputArea) continue;
+              
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
               let cell = backgroundGrid[i][j];
@@ -374,6 +472,214 @@
         }
         
         p.pop();
+        
+        // Draw text input area
+        drawTextInputArea();
+        
+        // Draw generate button
+        drawGenerateButton();
+        
+        // Draw navigation button as part of the grid below QR code
+        drawNavigationButton(offsetX, offsetY + qrSize);
+      }
+      
+      function drawTextInputArea() {
+        if (!qrData) return;
+        
+        const qrSize = qrData.modules * cellSize;
+        const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+        const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+        
+        const textInputRow = Math.floor(offsetY / cellSize) - 2;
+        const textInputStartColNum = Math.floor(offsetX / cellSize);
+        
+        if (textInputRow < 0) return; // Skip if not enough space above QR code
+        
+        p.push();
+        
+        // Draw text input cells
+        for (let i = 0; i < inputTextArray.length; i++) {
+          const cellX = (textInputStartColNum + i) * cellSize;
+          const cellY = textInputRow * cellSize;
+          
+          // Mouse interaction
+          let mouseDistance = p.dist(p.mouseX, p.mouseY, cellX + cellSize/2, cellY + cellSize/2);
+          let isHovered = mouseDistance < cellSize;
+          let isEditing = editingMode && editingIndex === i;
+          
+          // Draw cell background
+          if (isEditing) {
+            p.fill(100, 150, 255, 60); // Blue when editing
+          } else if (isHovered) {
+            p.fill(200, 200, 200, 40); // Light gray on hover
+          } else {
+            p.fill(240, 240, 240, 30); // Very light background
+          }
+          p.noStroke();
+          p.rect(cellX, cellY, cellSize, cellSize);
+          
+          // Draw character
+          if (isEditing) {
+            p.fill(0, 100, 200, 220); // Blue text when editing
+          } else if (isHovered) {
+            p.fill(100, 100, 100, 200); // Darker on hover
+          } else {
+            p.fill(120, 120, 120, 160); // Normal gray
+          }
+          
+          p.textSize(fontSize);
+          p.text(inputTextArray[i], cellX + cellSize/2, cellY + cellSize/2);
+          
+          // Store bounds for click detection
+          if (!p.textInputBounds) p.textInputBounds = [];
+          p.textInputBounds[i] = {
+            x: cellX,
+            y: cellY,
+            width: cellSize,
+            height: cellSize,
+            index: i
+          };
+        }
+        
+        // Draw add new character cell ('+' cell)
+        const addCellX = (textInputStartColNum + inputTextArray.length) * cellSize;
+        const addCellY = textInputRow * cellSize;
+        
+        let addMouseDistance = p.dist(p.mouseX, p.mouseY, addCellX + cellSize/2, addCellY + cellSize/2);
+        let addIsHovered = addMouseDistance < cellSize;
+        
+        if (addIsHovered) {
+          p.fill(150, 255, 150, 60); // Light green on hover
+        } else {
+          p.fill(200, 255, 200, 30); // Very light green
+        }
+        p.noStroke();
+        p.rect(addCellX, addCellY, cellSize, cellSize);
+        
+        // Draw '+' character
+        if (addIsHovered) {
+          p.fill(0, 150, 0, 200); // Dark green on hover
+        } else {
+          p.fill(100, 180, 100, 160); // Light green
+        }
+        p.textSize(fontSize);
+        p.text('+', addCellX + cellSize/2, addCellY + cellSize/2);
+        
+        // Store add button bounds
+        if (!p.textInputBounds) p.textInputBounds = [];
+        p.textInputBounds[inputTextArray.length] = {
+          x: addCellX,
+          y: addCellY,
+          width: cellSize,
+          height: cellSize,
+          index: inputTextArray.length,
+          isAddButton: true
+        };
+        
+        p.pop();
+      }
+      
+      function drawGenerateButton() {
+        if (!qrData) return;
+        
+        const qrSize = qrData.modules * cellSize;
+        const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+        const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+        
+        const textInputRow = Math.floor(offsetY / cellSize) - 2;
+        const generateButtonCol = Math.floor(offsetX / cellSize) + Math.floor(qrData.modules / 2);
+        const generateButtonRow = textInputRow + 1;
+        
+        if (generateButtonRow < 0) return; // Skip if not enough space
+        
+        const buttonX = generateButtonCol * cellSize;
+        const buttonY = generateButtonRow * cellSize;
+        
+        // Mouse interaction
+        let mouseDistance = p.dist(p.mouseX, p.mouseY, buttonX + cellSize/2, buttonY + cellSize/2);
+        let isHovered = mouseDistance < cellSize;
+        
+        p.push();
+        
+        // Draw button background
+        if (isHovered) {
+          p.fill(255, 200, 100, 80); // Orange on hover
+        } else {
+          p.fill(255, 220, 150, 40); // Light orange
+        }
+        p.noStroke();
+        p.rect(buttonX, buttonY, cellSize, cellSize);
+        
+        // Draw '=' character
+        if (isHovered) {
+          p.fill(200, 100, 0, 220); // Dark orange on hover
+        } else {
+          p.fill(180, 120, 60, 160); // Orange
+        }
+        
+        p.textSize(fontSize);
+        p.text('=', buttonX + cellSize/2, buttonY + cellSize/2);
+        
+        p.pop();
+        
+        // Store generate button bounds for click detection
+        p.generateButtonBounds = {
+          x: buttonX,
+          y: buttonY,
+          width: cellSize,
+          height: cellSize
+        };
+      }
+      
+      function drawNavigationButton(startX: number, startY: number) {
+        if (!qrData) return;
+        
+        // Choose a position in the grid below the QR code (center position)
+        const navRow = Math.floor(startY / cellSize) + 2; // 2 rows below QR code
+        const navCol = Math.floor(startX / cellSize) + Math.floor(qrData.modules / 2); // Center column
+        
+        const buttonX = navCol * cellSize;
+        const buttonY = navRow * cellSize;
+        
+        // Check if this position is within the background grid
+        const gridCol = Math.floor(buttonX / cellSize);
+        const gridRow = Math.floor(buttonY / cellSize);
+        
+        if (gridCol >= 0 && gridCol < gridCols && gridRow >= 0 && gridRow < gridRows) {
+          // Mouse interaction
+          let mouseDistance = p.dist(p.mouseX, p.mouseY, buttonX + cellSize/2, buttonY + cellSize/2);
+          let isHovered = mouseDistance < cellSize;
+          
+          // Draw navigation button
+          p.push();
+          
+          // Optional subtle background on hover
+          if (isHovered) {
+            p.fill(200, 200, 200, 30);
+            p.noStroke();
+            p.rect(buttonX, buttonY, cellSize, cellSize);
+          }
+          
+          // Draw ">" character
+          if (isHovered) {
+            p.fill(100, 100, 100, 200); // Darker on hover
+          } else {
+            p.fill(160, 160, 160, 120); // Normal gray
+          }
+          
+          p.textSize(fontSize);
+          p.text('＞', buttonX + cellSize/2, buttonY + cellSize/2);
+          
+          p.pop();
+          
+          // Store navigation button bounds for click detection
+          p.navAreaBounds = {
+            x: buttonX,
+            y: buttonY,
+            width: cellSize,
+            height: cellSize
+          };
+        }
       }
       
       function drawRipples() {
@@ -411,6 +717,72 @@
             ) {
               return true; // Allow DOM event handling
             }
+          }
+        }
+        
+        // Also check for the toggle button
+        const toggleButton = document.querySelector('#toggleControls');
+        if (toggleButton) {
+          const rect = toggleButton.getBoundingClientRect();
+          if (
+            p.mouseX >= rect.left && p.mouseX <= rect.right &&
+            p.mouseY >= rect.top && p.mouseY <= rect.bottom
+          ) {
+            return true; // Allow DOM event handling
+          }
+        }
+        
+        // Check text input area clicks
+        if (p.textInputBounds) {
+          for (let i = 0; i < p.textInputBounds.length; i++) {
+            const bounds = p.textInputBounds[i];
+            if (bounds && 
+                p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
+                p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height) {
+              
+              if (bounds.isAddButton) {
+                // Add new character
+                if (typeof window !== 'undefined' && (window as any).handleTextGridClick) {
+                  (window as any).handleTextGridClick(bounds.index);
+                }
+              } else {
+                // Edit existing character
+                if (typeof window !== 'undefined' && (window as any).handleTextGridClick) {
+                  (window as any).handleTextGridClick(bounds.index);
+                }
+              }
+              return false;
+            }
+          }
+        }
+        
+        // Check generate button click
+        if (p.generateButtonBounds) {
+          const bounds = p.generateButtonBounds;
+          if (
+            p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
+            p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height
+          ) {
+            // Generate QR code
+            if (typeof window !== 'undefined' && (window as any).handleGenerateClick) {
+              (window as any).handleGenerateClick();
+            }
+            return false;
+          }
+        }
+        
+        // Check if click is in navigation area
+        if (p.navAreaBounds && qrData) {
+          const bounds = p.navAreaBounds;
+          if (
+            p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
+            p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height
+          ) {
+            // Navigate to ASCII page with qrText as keyword
+            if (typeof window !== 'undefined' && (window as any).navigateToAscii) {
+              (window as any).navigateToAscii();
+            }
+            return false;
           }
         }
         
@@ -483,9 +855,121 @@
   $: if (p5Instance) {
     updateSettings();
   }
+  
+  // Navigation function that can be called from p5.js
+  function navigateToAscii() {
+    // Check if the keyword is "hint" and navigate to hint page
+    if (qrText.toLowerCase().trim() === 'hint') {
+      // Use window.location for hint page to ensure server-side load
+      if (typeof window !== 'undefined') {
+        window.location.href = '/hint';
+      }
+    } else {
+      const encodedKeyword = encodeURIComponent(qrText);
+      goto(`/ascii/${encodedKeyword}`);
+    }
+  }
+  
+  // Make navigation function available globally for p5.js
+  $: if (browser && typeof window !== 'undefined') {
+    (window as any).navigateToAscii = navigateToAscii;
+  }
+  
+  // Initialize input text array from qrText
+  $: {
+    if (!editingMode) {
+      inputTextArray = qrText.split('');
+    }
+  }
+  
+  // Handle text input grid clicks
+  function handleTextGridClick(index: number) {
+    editingMode = true;
+    editingIndex = index;
+    
+    // Focus on hidden input for better text input experience
+    if (hiddenInputElement) {
+      hiddenInputElement.value = qrText;
+      hiddenInputElement.focus();
+      
+      // Set cursor position to the clicked character
+      if (index < qrText.length) {
+        hiddenInputElement.setSelectionRange(index, index);
+      } else {
+        hiddenInputElement.setSelectionRange(qrText.length, qrText.length);
+      }
+    }
+  }
+  
+  // Handle keyboard input for editing
+  function handleKeyInput(event: KeyboardEvent) {
+    if (editingMode && event.key === 'Escape') {
+      event.preventDefault();
+      editingMode = false;
+      editingIndex = -1;
+      if (hiddenInputElement) {
+        // Ensure final value is synced before blur
+        const finalValue = hiddenInputElement.value;
+        qrText = finalValue;
+        inputTextArray = finalValue.split('');
+        generateQR();
+        hiddenInputElement.blur();
+      }
+    }
+    // Let the hidden input handle all other typing
+  }
+  
+  // Handle hidden input changes
+  function handleHiddenInputChange() {
+    if (editingMode && hiddenInputElement) {
+      const newValue = hiddenInputElement.value;
+      qrText = newValue;
+      inputTextArray = newValue.split('');
+      generateQR();
+    }
+  }
+  
+  // Handle hidden input blur (when focus is lost)
+  function handleHiddenInputBlur() {
+    editingMode = false;
+    editingIndex = -1;
+    // Ensure final sync when editing ends
+    if (hiddenInputElement) {
+      const finalValue = hiddenInputElement.value;
+      qrText = finalValue;
+      inputTextArray = finalValue.split('');
+      generateQR();
+    }
+  }
+  
+  // Add keyboard event listener
+  $: if (browser && typeof window !== 'undefined') {
+    (window as any).navigateToAscii = navigateToAscii;
+    (window as any).handleTextGridClick = handleTextGridClick;
+    (window as any).handleGenerateClick = generateQR;
+    
+    // Remove previous listener if it exists
+    if ((window as any).keyInputHandler) {
+      window.removeEventListener('keydown', (window as any).keyInputHandler);
+    }
+    
+    // Add new listener
+    (window as any).keyInputHandler = handleKeyInput;
+    window.addEventListener('keydown', handleKeyInput);
+  }
 </script>
 
 <div id="qrContainer" bind:this={qrContainer}></div>
+
+<!-- Hidden input for better text editing experience -->
+<input
+  type="text"
+  bind:this={hiddenInputElement}
+  on:input={handleHiddenInputChange}
+  on:blur={handleHiddenInputBlur}
+  style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;"
+  autocomplete="off"
+/>
 
 <button id="toggleControls" on:click={() => showControls = !showControls}>
   ⚙️ Settings
@@ -563,7 +1047,7 @@
     padding: 10px;
     border-radius: 8px;
     font-size: 12px;
-    z-index: 1000;
+    z-index: 2000;
     max-width: 250px;
     display: none;
     pointer-events: auto;
@@ -571,12 +1055,14 @@
 
   .controls-panel.show {
     display: block;
+    pointer-events: auto;
   }
 
   .controls-panel label {
     display: block;
     margin-bottom: 5px;
     font-weight: 600;
+    pointer-events: auto;
   }
 
   .controls-panel input,
@@ -588,6 +1074,7 @@
     border: 1px solid #666;
     border-radius: 4px;
     font-size: 11px;
+    pointer-events: auto;
   }
 
   .controls-panel button {
@@ -599,6 +1086,7 @@
     font-size: 11px;
     cursor: pointer;
     margin-right: 5px;
+    pointer-events: auto;
   }
 
   .controls-panel button:hover {
@@ -615,7 +1103,8 @@
     padding: 8px 12px;
     border-radius: 4px;
     cursor: pointer;
-    z-index: 1001;
+    z-index: 2001;
     font-size: 12px;
+    pointer-events: auto;
   }
 </style>
