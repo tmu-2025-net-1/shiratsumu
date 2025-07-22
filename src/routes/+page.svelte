@@ -21,6 +21,10 @@
   let qrText = "river";
   let ecLevel = "M";
   
+  // CharSet management
+  let baseCharSet = "ABCあいうえ◯▼잘자WXYZ0123456789"; // Original character set
+  let isCharSetManuallyEdited = false; // Flag to track manual edits
+  
   // Show controls toggle
   let showControls = false;
   
@@ -851,9 +855,14 @@
     }
   }
 
-  // Watch for changes in settings
+  // Watch for changes in settings and qrText
   $: if (p5Instance) {
     updateSettings();
+  }
+  
+  // Watch for qrText changes and regenerate QR
+  $: if (p5Instance && qrText) {
+    generateQR();
   }
   
   // Navigation function that can be called from p5.js
@@ -880,6 +889,42 @@
     if (!editingMode) {
       inputTextArray = qrText.split('');
     }
+  }
+  
+  // Sync qrText characters to charSet automatically
+  $: {
+    if (qrText && !isCharSetManuallyEdited) {
+      syncQrTextToCharSet();
+    }
+  }
+  
+  // Function to sync qrText characters to charSet
+  function syncQrTextToCharSet() {
+    // Get unique characters from qrText
+    const qrTextChars = [...new Set(qrText.split(''))];
+    
+    // Get unique characters from base character set
+    const baseChars = [...new Set(baseCharSet.split(''))];
+    
+    // Combine and remove duplicates
+    const combinedChars = [...new Set([...qrTextChars, ...baseChars])];
+    
+    // Update charSet
+    charSet = combinedChars.join('');
+  }
+  
+  // Handle manual charSet editing
+  function handleCharSetChange() {
+    isCharSetManuallyEdited = true;
+    // Remove duplicates from manually edited charSet
+    const uniqueChars = [...new Set(charSet.split(''))];
+    charSet = uniqueChars.join('');
+  }
+  
+  // Reset charSet to auto-sync mode
+  function resetCharSetSync() {
+    isCharSetManuallyEdited = false;
+    syncQrTextToCharSet();
   }
   
   // Handle text input grid clicks
@@ -925,7 +970,10 @@
       const newValue = hiddenInputElement.value;
       qrText = newValue;
       inputTextArray = newValue.split('');
-      generateQR();
+      // Force QR code regeneration
+      setTimeout(() => {
+        generateQR();
+      }, 0);
     }
   }
   
@@ -938,7 +986,10 @@
       const finalValue = hiddenInputElement.value;
       qrText = finalValue;
       inputTextArray = finalValue.split('');
-      generateQR();
+      // Force QR code regeneration
+      setTimeout(() => {
+        generateQR();
+      }, 0);
     }
   }
   
@@ -978,7 +1029,18 @@
 <div class="controls-panel" class:show={showControls}>
   <div>
     <label for="qrText">Text to encode</label>
-    <textarea id="qrText" rows="2" placeholder="Enter text..." bind:value={qrText}></textarea>
+    <textarea 
+      id="qrText" 
+      rows="2" 
+      placeholder="Enter text..." 
+      bind:value={qrText}
+      on:input={() => {
+        // Force QR regeneration on direct textarea input
+        setTimeout(() => {
+          if (p5Instance) generateQR();
+        }, 0);
+      }}
+    ></textarea>
 
     <label for="cellSize">Cell size: {cellSize}px</label>
     <input type="range" id="cellSize" min="8" max="48" bind:value={cellSize}>
@@ -1011,8 +1073,25 @@
       <option value="glow">Glow</option>
     </select>
 
-    <label for="charSet">Characters</label>
-    <input type="text" id="charSet" bind:value={charSet}>
+    <label for="charSet">Characters 
+      {#if isCharSetManuallyEdited}
+        <span style="color: #ff6b6b; font-size: 10px;">(Manual)</span>
+        <button 
+          type="button" 
+          on:click={resetCharSetSync}
+          style="margin-left: 5px; padding: 1px 4px; font-size: 9px; background: #666; border: none; color: white; border-radius: 2px; cursor: pointer;"
+          title="Reset to auto-sync with QR text"
+        >↻</button>
+      {:else}
+        <span style="color: #4caf50; font-size: 10px;">(Auto-sync)</span>
+      {/if}
+    </label>
+    <input 
+      type="text" 
+      id="charSet" 
+      bind:value={charSet}
+      on:input={handleCharSetChange}
+    >
 
     <label for="animationSpeed">Speed: {animationSpeed}</label>
     <input type="range" id="animationSpeed" min="0" max="100" bind:value={animationSpeed}>
