@@ -1,8 +1,8 @@
 import { getUnsplashImage } from '$lib/server/unsplash';
 import { error } from '@sveltejs/kit';
-import type { Load } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 
-export const load: Load = async ({ params, fetch }) => {
+export const load: PageServerLoad = async ({ params, fetch }) => {
   const keyword = params.keyword;
 
   if (!keyword) {

@@ -8,7 +8,6 @@
     chars: string;
   };
 
-  export const ssr = false;
   let container: HTMLDivElement;
 
   onMount(() => {
@@ -78,7 +77,7 @@
 <div bind:this={container} aria-label={data.alt}></div>
 
 <style>
-  :global(html), :global(body), .wrapper {
+  :global(html), :global(body) {
     margin: 0;
     padding: 0;
     width: 100%;
