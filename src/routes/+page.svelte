@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { type ComponentType } from 'svelte';
-  import type p5 from 'p5';
   import qrcode from 'qrcode-generator';
+  import { doc, setDoc, updateDoc } from 'firebase/firestore';
+  import { db } from '$lib/firebase';
 
   let p5Instance: any;
   let p5Constructor: any;
@@ -16,7 +16,7 @@
   let fontSize = 20;
   let animationSpeed = 0;
   let backgroundEffect = 'staticGrid';
-  let interactivity = 'hover';
+  let interactivity = 'none';
   let charSet = "ABCあいうえ◯▼잘자WXYZ0123456789";
   let qrText = "river";
   let ecLevel = "M";
@@ -33,18 +33,37 @@
   let editingIndex = -1;
   let inputTextArray: string[] = [];
   let hiddenInputElement: HTMLInputElement;
+  let sessionId: string | null = null;
 
   onMount(() => {
+    console.log("1. onMountが開始されました。"); // ★追加
+
+    // ユニークなセッションIDを生成
+    sessionId = Math.random().toString(36).substring(2, 10);
+    const sessionRef = doc(db, 'sessions', sessionId);
+
+    // Firestoreに初期データを書き込む
+    setDoc(sessionRef, {
+      keyword: qrText, // 現在のqrTextを保存
+      updatedAt: new Date(),
+    });
+
     let cleanup = () => {};
     
     // クライアントサイドのみでp5をロードする
     if (browser) {
-      // 動的にp5をインポート (非同期ではあるが、onMount内で完結)
-      import('p5').then(p5Module => {
-        p5Constructor = p5Module.default;
+      console.log("2. ブラウザ環境です。p5をインポートします。"); // ★追加
+
+      // 動的にp5をインポート (型エラーを無視)
+      // @ts-ignore
+      import('p5').then((p5Module: any) => {
+        console.log("3. p5のインポートに成功しました。"); // ★追加
+        p5Constructor = p5Module.default || p5Module;
         
         // Initialize P5 sketch
         initP5Sketch();
+      }).catch((err: any) => {
+        console.error("p5のインポートに失敗しました:", err); // ★エラーキャッチを追加
       });
       
       // クリーンアップ関数
@@ -60,10 +79,12 @@
   });
 
   function initP5Sketch() {
+    console.log("4. initP5Sketchが呼び出されました。"); 
     if (!p5Constructor) return;
     
     // Define the P5.js sketch
     const sketch = (p: any) => {
+      console.log("5. p5のsketch関数が実行されました。");
       let backgroundGrid: Array<Array<{
         char: string;
         alpha: number;
@@ -86,6 +107,7 @@
       let isAnimating = false;
       
       p.setup = function() {
+        console.log("6. p5.setup()が実行されました。");
         const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
         canvas.parent(qrContainer);
         p.textAlign(p.CENTER, p.CENTER);
@@ -107,6 +129,8 @@
       };
       
       p.draw = function() {
+        // このログは大量に出るのでコメントアウトしています
+        // console.log("7. p5.draw()が実行されました。"); 
         // Update time based on animation speed
         if (animationSpeed > 0) {
           time += 0.01 + (animationSpeed / 100) * 0.05;
@@ -817,9 +841,13 @@
       };
       
       function generateQR() {
+        if (!sessionId) return; // セッションIDがなければ何もしない
+
         // QRコードのエラー修正レベルを適切に設定
         const qr = qrcode(0, ecLevel as any);
-        qr.addData(qrText);
+      // 変更後: joinページへのURLをデータとして追加
+      const joinUrl = `${location.origin}/join?s=${sessionId}`;
+      qr.addData(joinUrl);
         qr.make();
         
         const modules = qr.getModuleCount();
@@ -1008,10 +1036,18 @@
     (window as any).keyInputHandler = handleKeyInput;
     window.addEventListener('keydown', handleKeyInput);
   }
+
+  // qrTextが変更されたら、Firestoreのデータを更新する
+  $: if (browser && sessionId && qrText) {
+    const sessionRef = doc(db, 'sessions', sessionId);
+    updateDoc(sessionRef, {
+      keyword: qrText,
+      updatedAt: new Date(),
+    });
+  }
 </script>
 
 <div id="qrContainer" bind:this={qrContainer}></div>
-
 <!-- Hidden input for better text editing experience -->
 <input
   type="text"
@@ -1105,7 +1141,7 @@
   :global(body) {
     margin: 0;
     padding: 0;
-    background: #000;
+    background: #fff;
     overflow: hidden;
   }
 

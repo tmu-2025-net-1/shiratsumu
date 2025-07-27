@@ -1,13 +1,9 @@
-import type { PageServerLoad } from './$types';
 import { getUnsplashImage } from '$lib/server/unsplash';
 import { error } from '@sveltejs/kit';
+import type { Load } from '@sveltejs/kit';
 
-export const ssr = false;
-
-export const load: PageServerLoad = async ({ params, url, fetch }) => {
-  // `params.keyword`からキーワードを取得する
+export const load: Load = async ({ params, fetch }) => {
   const keyword = params.keyword;
-  const chars = url.searchParams.get('chars') ?? keyword;
 
   if (!keyword) {
     throw error(400, 'Keyword is required');
@@ -16,12 +12,10 @@ export const load: PageServerLoad = async ({ params, url, fetch }) => {
   try {
     const imageData = await getUnsplashImage(keyword, fetch);
     
-    // 平坦なオブジェクトでデータを返す
     return {
       img: imageData.img,
       alt: imageData.alt,
-      q: keyword,
-      chars: chars
+      keyword: keyword
     };
   } catch (err: any) {
     throw error(500, `画像の取得に失敗しました: ${err.message}`);
