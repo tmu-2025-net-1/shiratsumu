@@ -12,14 +12,15 @@
   let qrData: { qr: any; modules: number } | null = null;
   
   // Settings with default values
-  let cellSize = 20;
-  let fontSize = 20;
+  let cellSize = 15;
+  let fontSize = 15;
   let animationSpeed = 0;
   let backgroundEffect = 'staticGrid';
   let interactivity = 'none';
   let charSet = "ABCあいうえ◯▼잘자WXYZ0123456789";
-  let qrText = "river";
+  let qrText = "mountain";
   let ecLevel = "M";
+  let qrMode = 'url'; // 'url' for join page URL, 'text' for original text
   
   // CharSet management
   let baseCharSet = "ABCあいうえ◯▼잘자WXYZ0123456789"; // Original character set
@@ -36,7 +37,7 @@
   let sessionId: string | null = null;
 
   onMount(() => {
-    console.log("1. onMountが開始されました。"); // ★追加
+    console.log("1. onMountが開始されました。"); 
 
     // ユニークなセッションIDを生成
     sessionId = Math.random().toString(36).substring(2, 10);
@@ -52,12 +53,12 @@
     
     // クライアントサイドのみでp5をロードする
     if (browser) {
-      console.log("2. ブラウザ環境です。p5をインポートします。"); // ★追加
+      console.log("2. ブラウザ環境です。p5をインポートします。"); 
 
       // 動的にp5をインポート (型エラーを無視)
       // @ts-ignore
       import('p5').then((p5Module: any) => {
-        console.log("3. p5のインポートに成功しました。"); // ★追加
+        console.log("3. p5のインポートに成功しました。"); 
         p5Constructor = p5Module.default || p5Module;
         
         // Initialize P5 sketch
@@ -105,6 +106,23 @@
       let gridSize = 25;
       let gridCols: number, gridRows: number;
       let isAnimating = false;
+
+      // 画面幅に応じてセルのサイズを動的に決定する関数
+      const updateResponsiveSizes = () => {
+        const breakpoint = 435; // これ以下の幅でスマホ用レイアウトに
+        const mobileTargetCellCount = 35; // スマホで横幅に表示するセル数
+
+        if (p.windowWidth <= breakpoint) {
+          // スマホの場合：画面幅を基準にセルサイズを計算
+          cellSize = p.windowWidth / mobileTargetCellCount;
+        } else {
+          // PCの場合：固定サイズ
+          cellSize = 15;
+        }
+        // フォントサイズもセルサイズに連動させて見た目を保つ
+        fontSize = cellSize;
+      };
+
       
       p.setup = function() {
         console.log("6. p5.setup()が実行されました。");
@@ -112,6 +130,9 @@
         canvas.parent(qrContainer);
         p.textAlign(p.CENTER, p.CENTER);
         p.textFont('monospace');
+
+        // 初期ロード時にレスポンシブなサイズを計算
+        updateResponsiveSizes();
         
         // Make sure canvas doesn't interfere with UI controls
         canvas.style('z-index', '1');
@@ -125,7 +146,12 @@
       
       p.windowResized = function() {
         p.resizeCanvas(p.windowWidth, p.windowHeight);
-        initBackgroundGrid();
+
+        // ウィンドウリサイズ時にレスポンシブなサイズを再計算
+        updateResponsiveSizes();
+
+        // 背景とQRコードを新しいサイズで再描画
+        generateQR();
       };
       
       p.draw = function() {
@@ -518,7 +544,9 @@
         const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
         const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
         
+        // 上辺から二つ上の行にテキスト入力エリアを配置
         const textInputRow = Math.floor(offsetY / cellSize) - 2;
+        // qrの左端からの列番号を計算
         const textInputStartColNum = Math.floor(offsetX / cellSize);
         
         if (textInputRow < 0) return; // Skip if not enough space above QR code
@@ -845,9 +873,18 @@
 
         // QRコードのエラー修正レベルを適切に設定
         const qr = qrcode(0, ecLevel as any);
-      // 変更後: joinページへのURLをデータとして追加
-      const joinUrl = `${location.origin}/join?s=${sessionId}`;
-      qr.addData(joinUrl);
+        
+        // qrModeに基づいてQRコードのデータを決定
+        let qrCodeData: string;
+        if (qrMode === 'text') {
+          // オリジナルテキストモード: qrTextをそのまま使用
+          qrCodeData = qrText;
+        } else {
+          // URLモード: joinページへのURLを生成
+          qrCodeData = `${location.origin}/join?s=${sessionId}`;
+        }
+        
+        qr.addData(qrCodeData);
         qr.make();
         
         const modules = qr.getModuleCount();
@@ -889,7 +926,12 @@
   }
   
   // Watch for qrText changes and regenerate QR
-  $: if (p5Instance && qrText) {
+  $: if (p5Instance && qrText !== undefined) {
+    generateQR();
+  }
+  
+  // Watch for qrMode changes and regenerate QR
+  $: if (p5Instance && qrMode) {
     generateQR();
   }
   
@@ -921,25 +963,24 @@
   
   // Sync qrText characters to charSet automatically
   $: {
-    if (qrText && !isCharSetManuallyEdited) {
+    // qrTextが空文字""の場合も実行されるように、条件を`undefined`でないことに変更
+    if (qrText !== undefined && !isCharSetManuallyEdited) {
       syncQrTextToCharSet();
     }
   }
-  
-  // Function to sync qrText characters to charSet
-  function syncQrTextToCharSet() {
-    // Get unique characters from qrText
+
+// Function to sync qrText characters to charSet
+function syncQrTextToCharSet() {
+  // qrTextが有効な文字列であるかを確認
+  if (qrText && qrText.length > 0) {
+    // qrTextからユニークな文字を取得し、それだけでcharSetを構成する
     const qrTextChars = [...new Set(qrText.split(''))];
-    
-    // Get unique characters from base character set
-    const baseChars = [...new Set(baseCharSet.split(''))];
-    
-    // Combine and remove duplicates
-    const combinedChars = [...new Set([...qrTextChars, ...baseChars])];
-    
-    // Update charSet
-    charSet = combinedChars.join('');
+    charSet = qrTextChars.join('');
+  } else {
+    // qrTextが空の場合は、描画文字を「-」に設定する
+    charSet = '-';
   }
+}
   
   // Handle manual charSet editing
   function handleCharSetChange() {
@@ -1048,7 +1089,7 @@
 </script>
 
 <div id="qrContainer" bind:this={qrContainer}></div>
-<!-- Hidden input for better text editing experience -->
+<!--　隠された入力フィールド　-->
 <input
   type="text"
   bind:this={hiddenInputElement}
@@ -1090,6 +1131,12 @@
       <option value="M">M (15%)</option>
       <option value="Q">Q (25%)</option>
       <option value="H">H (30%)</option>
+    </select>
+
+    <label for="qrMode">QR Code Mode</label>
+    <select id="qrMode" bind:value={qrMode}>
+      <option value="url">Join Page URL</option>
+      <option value="text">Original Text</option>
     </select>
 
     <label for="backgroundEffect">Background</label>
