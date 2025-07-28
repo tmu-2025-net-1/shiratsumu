@@ -5,11 +5,13 @@
   import qrcode from 'qrcode-generator';
   import { doc, setDoc, updateDoc } from 'firebase/firestore';
   import { db } from '$lib/firebase';
+  import EditableText from '$lib/component/EditableText.svelte'; 
 
   let p5Instance: any;
   let p5Constructor: any;
   let qrContainer: HTMLDivElement;
   let qrData: { qr: any; modules: number } | null = null;
+  let canvasInstance: any; 
   
   // Settings with default values
   let cellSize = 15;
@@ -29,11 +31,9 @@
   // Show controls toggle
   let showControls = false;
   
+  let editableTextInstance: EditableText; 
+
   // Grid-based text input
-  let editingMode = false;
-  let editingIndex = -1;
-  let inputTextArray: string[] = [];
-  let hiddenInputElement: HTMLInputElement;
   let sessionId: string | null = null;
 
   onMount(() => {
@@ -78,6 +78,22 @@
     
     return cleanup;
   });
+
+  function toggleSettings() {
+    showControls = !showControls;
+  }
+
+  // canvasのz-indexを制御するためのリアクティブステート
+  $: if (canvasInstance) {
+  if (showControls) {
+    // Settingsパネルが開いている時：キャンバスを一番後ろに下げる
+    canvasInstance.style('z-index', '-1');
+  } else {
+    // Settingsパネルが閉じている時：キャンバスを元の位置に戻す
+    canvasInstance.style('z-index', '1');
+  }
+}
+
 
   function initP5Sketch() {
     console.log("4. initP5Sketchが呼び出されました。"); 
@@ -127,6 +143,7 @@
       p.setup = function() {
         console.log("6. p5.setup()が実行されました。");
         const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+        canvasInstance = canvas;
         canvas.parent(qrContainer);
         p.textAlign(p.CENTER, p.CENTER);
         p.textFont('monospace');
@@ -155,33 +172,41 @@
       };
       
       p.draw = function() {
-        // このログは大量に出るのでコメントアウトしています
-        // console.log("7. p5.draw()が実行されました。"); 
-        // Update time based on animation speed
-        if (animationSpeed > 0) {
-          time += 0.01 + (animationSpeed / 100) * 0.05;
-        } else {
-          time += 0.005; // Very slow movement even when stopped
-        }
+          p.background(255, 255, 255);
+
+          // ★QRコードとテキストエリアの共通パラメータをここで一元管理
+          const qrSize = qrData ? qrData.modules * cellSize : 0;
+          const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+          const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+          
+          // ★テキストエリアの正しい位置を計算
+          const textInputRow = Math.floor(offsetY / cellSize) - 2;
+          const textInputX = offsetX;
+          const textInputY = textInputRow * cellSize;
+          // console.log("Text input position:", textInputX, textInputY, "Row:", textInputRow);
+
+          // 1. 背景グリッドを描画（計算したテキスト位置を渡す）
+          // EditableTextに渡すのと同じ座標と長さを渡すことで、完全に一致させる
+          drawBackgroundGrid({ x: textInputX, y: textInputY, length: qrText.length });
+
+          // 2. QRコードと関連ボタンを描画
+          if (qrData) {
+              renderQR(); 
+              drawGenerateButton();
+              drawNavigationButton(offsetX, offsetY + qrSize);
+          }
         
-        // Clear background - white background
-        p.background(255, 255, 255);
-        
-        // Draw background grid effect
-        drawBackgroundGrid();
-        
-        // Draw QR code
-        if (qrData) {
-          drawQR();
-        }
-        
-        // Draw ripples
-        drawRipples();
-        
-        // Update ripples
-        updateRipples();
+          // 3. EditableTextコンポーネントを描画
+          if (editableTextInstance) {
+              // ★プロパティを直接変更するのではなく、draw関数に引数として渡す
+              editableTextInstance.draw(p, textInputX, textInputY);
+          }
+            
+          // ripplesなどの描画処理
+          drawRipples();
+          updateRipples();
       };
-      
+        
       function initBackgroundGrid() {
         backgroundGrid = [];
         // Use the same grid size as QR cell size for perfect alignment
@@ -207,15 +232,18 @@
         }
       }
       
-      function drawBackgroundGrid() {
+      function drawBackgroundGrid(textAreaBounds: { x: number, y: number, length: number }){
         if (backgroundEffect === 'none') return;
         
         p.push();
         
         // Get navigation button position to skip drawing character there
         let navButtonGridCol = -1, navButtonGridRow = -1;
-        let textInputStartCol = -1, textInputStartRow = -1;
         let generateButtonCol = -1, generateButtonRow = -1;
+
+        // テキストエリアの行・列を引数から計算
+        const textStartRow = Math.floor(textAreaBounds.y / cellSize);
+        const textStartCol = Math.floor(textAreaBounds.x / cellSize);
         
         if (qrData) {
           const qrSize = qrData.modules * cellSize;
@@ -231,8 +259,8 @@
           // Text input area (above QR code)
           const textInputRow = Math.floor(offsetY / cellSize) - 2;
           const textInputStartColNum = Math.floor(offsetX / cellSize);
-          textInputStartCol = textInputStartColNum;
-          textInputStartRow = textInputRow;
+          // textInputStartCol = textInputStartColNum;
+          // textInputStartRow = textInputRow;
           
           // Generate button (below text input)
           generateButtonCol = textInputStartColNum + Math.floor(qrData.modules / 2);
@@ -260,16 +288,11 @@
               if (i === generateButtonCol && j === generateButtonRow) continue;
               
               // Skip text input area
-              let isTextInputArea = false;
-              if (textInputStartRow >= 0 && j === textInputStartRow) {
-                for (let k = 0; k < inputTextArray.length + 1; k++) {
-                  if (i === textInputStartCol + k) {
-                    isTextInputArea = true;
-                    break;
-                  }
-                }
-              }
-              if (isTextInputArea) continue;
+            let isTextInputArea = false;
+            if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
+                isTextInputArea = true;
+            }
+            if (isTextInputArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -309,16 +332,11 @@
               if (i === generateButtonCol && j === generateButtonRow) continue;
               
               // Skip text input area
-              let isTextInputArea = false;
-              if (textInputStartRow >= 0 && j === textInputStartRow) {
-                for (let k = 0; k < inputTextArray.length + 1; k++) {
-                  if (i === textInputStartCol + k) {
-                    isTextInputArea = true;
-                    break;
-                  }
-                }
-              }
-              if (isTextInputArea) continue;
+            let isTextInputArea = false;
+            if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
+                isTextInputArea = true;
+            }
+            if (isTextInputArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -360,16 +378,11 @@
               if (i === generateButtonCol && j === generateButtonRow) continue;
               
               // Skip text input area
-              let isTextInputArea = false;
-              if (textInputStartRow >= 0 && j === textInputStartRow) {
-                for (let k = 0; k < inputTextArray.length + 1; k++) {
-                  if (i === textInputStartCol + k) {
-                    isTextInputArea = true;
-                    break;
-                  }
-                }
-              }
-              if (isTextInputArea) continue;
+            let isTextInputArea = false;
+            if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
+                isTextInputArea = true;
+            }
+            if (isTextInputArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -412,16 +425,11 @@
               if (i === generateButtonCol && j === generateButtonRow) continue;
               
               // Skip text input area
-              let isTextInputArea = false;
-              if (textInputStartRow >= 0 && j === textInputStartRow) {
-                for (let k = 0; k < inputTextArray.length + 1; k++) {
-                  if (i === textInputStartCol + k) {
-                    isTextInputArea = true;
-                    break;
-                  }
-                }
-              }
-              if (isTextInputArea) continue;
+            let isTextInputArea = false;
+            if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
+                isTextInputArea = true;
+            }
+            if (isTextInputArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -454,187 +462,57 @@
         p.pop();
       }
       
-      function drawQR() {
-        if (!qrData) return;
-        
-        const { qr, modules } = qrData;
-        
-        // Center the QR code and align with background grid
-        let qrSize = modules * cellSize;
-        let offsetX = (p.width - qrSize) / 2;
-        let offsetY = (p.height - qrSize) / 2;
-        
-        // Snap to grid alignment
-        offsetX = Math.round(offsetX / cellSize) * cellSize;
-        offsetY = Math.round(offsetY / cellSize) * cellSize;
-        
-        p.push();
-        p.translate(offsetX, offsetY);
-        
-        // QR code blends seamlessly with background - no separate background
-        for (let r = 0; r < modules; r++) {
-          for (let c = 0; c < modules; c++) {
-            let isDark = qr.isDark(r, c);
-            let x = c * cellSize;
-            let y = r * cellSize;
-            
-            // Mouse interaction
-            let mouseDistance = p.dist(p.mouseX - offsetX, p.mouseY - offsetY, x + cellSize/2, y + cellSize/2);
-            let cellInfluence = 0;
-            
-            if (interactivity === 'hover' && mouseDistance < cellSize * 2) {
-              cellInfluence = p.map(mouseDistance, 0, cellSize * 2, 1, 0);
-            } else if (interactivity === 'glow' && mouseDistance < cellSize * 3) {
-              cellInfluence = p.map(mouseDistance, 0, cellSize * 3, 0.8, 0);
-            }
-            
-            // More seamless colors - subtle difference from background
-            let bgColor, fgColor;
-            if (isDark) {
-              bgColor = p.color(0, 0, 0); // Black background for dark cells
-              fgColor = p.color(255, 255, 255, 220); // White characters
-            } else {
-              bgColor = p.color(255, 255, 255); // White background for light cells
-              fgColor = p.color(150, 150, 150, 60); // Very light gray characters
-            }
-            
-            if (cellInfluence > 0) {
+      // renderQR関数
+
+      function renderQR() {
+          if (!qrData) return;
+          
+          const { qr, modules } = qrData;
+          
+          // Center the QR code and align with background grid
+          let qrSize = modules * cellSize;
+          let offsetX = (p.width - qrSize) / 2;
+          let offsetY = (p.height - qrSize) / 2;
+          
+          // Snap to grid alignment
+          offsetX = Math.round(offsetX / cellSize) * cellSize;
+          offsetY = Math.round(offsetY / cellSize) * cellSize;
+          
+          p.push();
+          p.translate(offsetX, offsetY);
+          
+          for (let r = 0; r < modules; r++) {
+            for (let c = 0; c < modules; c++) {
+              // ... (QRコードの各セルを描画するロジックは変更なし) ...
+              let isDark = qr.isDark(r, c);
+              let x = c * cellSize;
+              let y = r * cellSize;
+              
+              let bgColor, fgColor;
               if (isDark) {
-                bgColor = p.lerpColor(p.color(0, 0, 0), p.color(50, 50, 150), cellInfluence);
-                fgColor = p.lerpColor(p.color(255, 255, 255, 220), p.color(255, 255, 100), cellInfluence);
+                bgColor = p.color(0, 0, 0);
+                fgColor = p.color(255, 255, 255, 220);
               } else {
-                bgColor = p.lerpColor(p.color(255, 255, 255), p.color(200, 200, 255), cellInfluence);
-                fgColor = p.lerpColor(p.color(150, 150, 150, 60), p.color(50, 50, 200), cellInfluence);
+                bgColor = p.color(255, 255, 255);
+                fgColor = p.color(150, 150, 150, 60);
               }
+              
+              p.fill(bgColor);
+              p.noStroke();
+              p.rect(x, y, cellSize, cellSize);
+              
+              let charIndex = (r * modules + c) % charSet.length;
+              let ch = charSet[charIndex];
+              
+              p.fill(fgColor);
+              p.textSize(fontSize);
+              p.text(ch, x + cellSize/2, y + cellSize/2);
             }
-            
-            // Draw background
-            p.fill(bgColor);
-            p.noStroke();
-            p.rect(x, y, cellSize, cellSize);
-            
-            // Draw character
-            let charIndex = isAnimating ? 
-              Math.floor(p.random(charSet.length)) : 
-              (r * modules + c) % charSet.length;
-            let ch = charSet[charIndex];
-            
-            p.fill(fgColor);
-            p.textSize(fontSize + cellInfluence * 4);
-            p.text(ch, x + cellSize/2, y + cellSize/2);
           }
-        }
-        
-        p.pop();
-        
-        // Draw text input area
-        drawTextInputArea();
-        
-        // Draw generate button
-        drawGenerateButton();
-        
-        // Draw navigation button as part of the grid below QR code
-        drawNavigationButton(offsetX, offsetY + qrSize);
+          p.pop();
+          // ボタン描画の呼び出しはここから削除
       }
-      
-      function drawTextInputArea() {
-        if (!qrData) return;
-        
-        const qrSize = qrData.modules * cellSize;
-        const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
-        const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
-        
-        // 上辺から二つ上の行にテキスト入力エリアを配置
-        const textInputRow = Math.floor(offsetY / cellSize) - 2;
-        // qrの左端からの列番号を計算
-        const textInputStartColNum = Math.floor(offsetX / cellSize);
-        
-        if (textInputRow < 0) return; // Skip if not enough space above QR code
-        
-        p.push();
-        
-        // Draw text input cells
-        for (let i = 0; i < inputTextArray.length; i++) {
-          const cellX = (textInputStartColNum + i) * cellSize;
-          const cellY = textInputRow * cellSize;
-          
-          // Mouse interaction
-          let mouseDistance = p.dist(p.mouseX, p.mouseY, cellX + cellSize/2, cellY + cellSize/2);
-          let isHovered = mouseDistance < cellSize;
-          let isEditing = editingMode && editingIndex === i;
-          
-          // Draw cell background
-          if (isEditing) {
-            p.fill(100, 150, 255, 60); // Blue when editing
-          } else if (isHovered) {
-            p.fill(200, 200, 200, 40); // Light gray on hover
-          } else {
-            p.fill(240, 240, 240, 30); // Very light background
-          }
-          p.noStroke();
-          p.rect(cellX, cellY, cellSize, cellSize);
-          
-          // Draw character
-          if (isEditing) {
-            p.fill(0, 100, 200, 220); // Blue text when editing
-          } else if (isHovered) {
-            p.fill(100, 100, 100, 200); // Darker on hover
-          } else {
-            p.fill(120, 120, 120, 160); // Normal gray
-          }
-          
-          p.textSize(fontSize);
-          p.text(inputTextArray[i], cellX + cellSize/2, cellY + cellSize/2);
-          
-          // Store bounds for click detection
-          if (!p.textInputBounds) p.textInputBounds = [];
-          p.textInputBounds[i] = {
-            x: cellX,
-            y: cellY,
-            width: cellSize,
-            height: cellSize,
-            index: i
-          };
-        }
-        
-        // Draw add new character cell ('+' cell)
-        const addCellX = (textInputStartColNum + inputTextArray.length) * cellSize;
-        const addCellY = textInputRow * cellSize;
-        
-        let addMouseDistance = p.dist(p.mouseX, p.mouseY, addCellX + cellSize/2, addCellY + cellSize/2);
-        let addIsHovered = addMouseDistance < cellSize;
-        
-        if (addIsHovered) {
-          p.fill(150, 255, 150, 60); // Light green on hover
-        } else {
-          p.fill(200, 255, 200, 30); // Very light green
-        }
-        p.noStroke();
-        p.rect(addCellX, addCellY, cellSize, cellSize);
-        
-        // Draw '+' character
-        if (addIsHovered) {
-          p.fill(0, 150, 0, 200); // Dark green on hover
-        } else {
-          p.fill(100, 180, 100, 160); // Light green
-        }
-        p.textSize(fontSize);
-        p.text('+', addCellX + cellSize/2, addCellY + cellSize/2);
-        
-        // Store add button bounds
-        if (!p.textInputBounds) p.textInputBounds = [];
-        p.textInputBounds[inputTextArray.length] = {
-          x: addCellX,
-          y: addCellY,
-          width: cellSize,
-          height: cellSize,
-          index: inputTextArray.length,
-          isAddButton: true
-        };
-        
-        p.pop();
-      }
-      
+
       function drawGenerateButton() {
         if (!qrData) return;
         
@@ -762,100 +640,63 @@
       }
       
       p.mousePressed = function() {
-        // Skip if mouse is over UI controls
-        if (showControls) {
-          const controlsEl = document.querySelector('.controls-panel');
-          if (controlsEl) {
-            const rect = controlsEl.getBoundingClientRect();
-            if (
-              p.mouseX >= rect.left && p.mouseX <= rect.right &&
-              p.mouseY >= rect.top && p.mouseY <= rect.bottom
-            ) {
-              return true; // Allow DOM event handling
-            }
-          }
-        }
-        
-        // Also check for the toggle button
-        const toggleButton = document.querySelector('#toggleControls');
-        if (toggleButton) {
-          const rect = toggleButton.getBoundingClientRect();
-          if (
-            p.mouseX >= rect.left && p.mouseX <= rect.right &&
-            p.mouseY >= rect.top && p.mouseY <= rect.bottom
-          ) {
-            return true; // Allow DOM event handling
-          }
-        }
-        
-        // Check text input area clicks
-        if (p.textInputBounds) {
-          for (let i = 0; i < p.textInputBounds.length; i++) {
-            const bounds = p.textInputBounds[i];
-            if (bounds && 
-                p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
-                p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height) {
-              
-              if (bounds.isAddButton) {
-                // Add new character
-                if (typeof window !== 'undefined' && (window as any).handleTextGridClick) {
-                  (window as any).handleTextGridClick(bounds.index);
-                }
-              } else {
-                // Edit existing character
-                if (typeof window !== 'undefined' && (window as any).handleTextGridClick) {
-                  (window as any).handleTextGridClick(bounds.index);
-                }
+          // --- 判定の順序が最重要 ---
+
+          // 1. 最初に「Settings開閉ボタン」自体がクリックされたかを判定
+          const toggleButton = document.querySelector('#toggleControls');
+          if (toggleButton) {
+              const rect = toggleButton.getBoundingClientRect();
+              if (p.mouseX >= rect.left && p.mouseX <= rect.right && p.mouseY >= rect.top && p.mouseY <= rect.bottom) {
+                  // Svelteの関数を直接呼び出して状態を切り替える
+                  if (typeof window !== 'undefined' && (window as any).toggleSettings) {
+                      (window as any).toggleSettings();
+                  }
+                  // p5がイベントを処理したので、ここで終了
+                  return false;
               }
+          }
+
+          // 2. 次に「Settingsパネル（開いている場合）」がクリックされたかを判定
+          if (showControls) {
+              // この時点でボタンのクリックは既に処理済み。
+              // ここに到達した場合、クリックはパネルの他の部分なので、ブラウザに任せる。
+              return true;
+          }
+
+          // --- ここからはパネルが閉じている時のキャンバス操作 ---
+
+          // 3. EditableTextコンポーネントのクリック処理
+          if (editableTextInstance && editableTextInstance.mousePressed(p)) {
               return false;
-            }
           }
-        }
-        
-        // Check generate button click
-        if (p.generateButtonBounds) {
-          const bounds = p.generateButtonBounds;
-          if (
-            p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
-            p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height
-          ) {
-            // Generate QR code
-            if (typeof window !== 'undefined' && (window as any).handleGenerateClick) {
-              (window as any).handleGenerateClick();
-            }
-            return false;
+
+          // 4. その他のキャンバス上のボタン類（Generate, Navigation）のクリック処理
+          if (p.generateButtonBounds) {
+              const bounds = p.generateButtonBounds;
+              if (p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width && p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height) {
+                  if (typeof window !== 'undefined' && (window as any).handleGenerateClick) {
+                      (window as any).handleGenerateClick();
+                  }
+                  return false;
+              }
           }
-        }
-        
-        // Check if click is in navigation area
-        if (p.navAreaBounds && qrData) {
-          const bounds = p.navAreaBounds;
-          if (
-            p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width &&
-            p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height
-          ) {
-            // Navigate to ASCII page with qrText as keyword
-            if (typeof window !== 'undefined' && (window as any).navigateToAscii) {
-              (window as any).navigateToAscii();
-            }
-            return false;
+          
+          if (p.navAreaBounds && qrData) {
+              const bounds = p.navAreaBounds;
+              if (p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width && p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height) {
+                  if (typeof window !== 'undefined' && (window as any).navigateToAscii) {
+                      (window as any).navigateToAscii();
+                  }
+                  return false;
+              }
           }
-        }
-        
-        // Handle ripple effect
-        if (interactivity === 'ripple') {
-          ripples.push({
-            x: p.mouseX,
-            y: p.mouseY,
-            size: 0,
-            speed: 8,
-            alpha: 255,
-            decay: 5
-          });
-        }
-        return false;
+          
+          // 5. キャンバスの地の部分のクリック
+          if (interactivity === 'ripple') {
+            ripples.push({ x: p.mouseX, y: p.mouseY, size: 0, speed: 8, alpha: 255, decay: 5 });
+          }
+          return false;
       };
-      
       // Make the generateQR function accessible from outside
       p.generateQR = function() {
         generateQR();
@@ -954,13 +795,6 @@
     (window as any).navigateToAscii = navigateToAscii;
   }
   
-  // Initialize input text array from qrText
-  $: {
-    if (!editingMode) {
-      inputTextArray = qrText.split('');
-    }
-  }
-  
   // Sync qrText characters to charSet automatically
   $: {
     // qrTextが空文字""の場合も実行されるように、条件を`undefined`でないことに変更
@@ -996,87 +830,12 @@ function syncQrTextToCharSet() {
     syncQrTextToCharSet();
   }
   
-  // Handle text input grid clicks
-  function handleTextGridClick(index: number) {
-    editingMode = true;
-    editingIndex = index;
-    
-    // Focus on hidden input for better text input experience
-    if (hiddenInputElement) {
-      hiddenInputElement.value = qrText;
-      hiddenInputElement.focus();
-      
-      // Set cursor position to the clicked character
-      if (index < qrText.length) {
-        hiddenInputElement.setSelectionRange(index, index);
-      } else {
-        hiddenInputElement.setSelectionRange(qrText.length, qrText.length);
-      }
-    }
-  }
-  
-  // Handle keyboard input for editing
-  function handleKeyInput(event: KeyboardEvent) {
-    if (editingMode && event.key === 'Escape') {
-      event.preventDefault();
-      editingMode = false;
-      editingIndex = -1;
-      if (hiddenInputElement) {
-        // Ensure final value is synced before blur
-        const finalValue = hiddenInputElement.value;
-        qrText = finalValue;
-        inputTextArray = finalValue.split('');
-        generateQR();
-        hiddenInputElement.blur();
-      }
-    }
-    // Let the hidden input handle all other typing
-  }
-  
-  // Handle hidden input changes
-  function handleHiddenInputChange() {
-    if (editingMode && hiddenInputElement) {
-      const newValue = hiddenInputElement.value;
-      qrText = newValue;
-      inputTextArray = newValue.split('');
-      // Force QR code regeneration
-      setTimeout(() => {
-        generateQR();
-      }, 0);
-    }
-  }
-  
-  // Handle hidden input blur (when focus is lost)
-  function handleHiddenInputBlur() {
-    editingMode = false;
-    editingIndex = -1;
-    // Ensure final sync when editing ends
-    if (hiddenInputElement) {
-      const finalValue = hiddenInputElement.value;
-      qrText = finalValue;
-      inputTextArray = finalValue.split('');
-      // Force QR code regeneration
-      setTimeout(() => {
-        generateQR();
-      }, 0);
-    }
-  }
-  
-  // Add keyboard event listener
-  $: if (browser && typeof window !== 'undefined') {
-    (window as any).navigateToAscii = navigateToAscii;
-    (window as any).handleTextGridClick = handleTextGridClick;
-    (window as any).handleGenerateClick = generateQR;
-    
-    // Remove previous listener if it exists
-    if ((window as any).keyInputHandler) {
-      window.removeEventListener('keydown', (window as any).keyInputHandler);
-    }
-    
-    // Add new listener
-    (window as any).keyInputHandler = handleKeyInput;
-    window.addEventListener('keydown', handleKeyInput);
-  }
+// Add keyboard event listener
+$: if (browser && typeof window !== 'undefined') {
+  (window as any).navigateToAscii = navigateToAscii;
+  (window as any).handleGenerateClick = generateQR;
+  (window as any).toggleSettings = toggleSettings;
+}
 
   // qrTextが変更されたら、Firestoreのデータを更新する
   $: if (browser && sessionId && qrText) {
@@ -1089,17 +848,15 @@ function syncQrTextToCharSet() {
 </script>
 
 <div id="qrContainer" bind:this={qrContainer}></div>
-<!--　隠された入力フィールド　-->
-<input
-  type="text"
-  bind:this={hiddenInputElement}
-  on:input={handleHiddenInputChange}
-  on:blur={handleHiddenInputBlur}
-  style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;"
-  autocomplete="off"
+
+<EditableText
+  bind:this={editableTextInstance}
+  bind:value={qrText}
+  cellSize={cellSize}
+  fontSize={fontSize}
 />
 
-<button id="toggleControls" on:click={() => showControls = !showControls}>
+<button id="toggleControls" >
   ⚙️ Settings
 </button>
 
@@ -1183,6 +940,8 @@ function syncQrTextToCharSet() {
     <button on:click={downloadImage}>Download</button>
   </div>
 </div>
+
+
 
 <style>
   :global(body) {
