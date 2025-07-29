@@ -24,7 +24,7 @@
       if (docSnap.exists()) {
         // 3. データを取得できたら、そのキーワードを使ってASCIIページへ移動
         const keyword = docSnap.data().keyword;
-        statusMessage = `「${keyword}」のページへ移動します...`;
+        // statusMessage = `「${keyword}」のページへ移動します...`;
         
         // /ascii/[keyword] ページへジャンプ（セッションIDもパラメータとして渡す）
         await goto(`/ascii/${encodeURIComponent(keyword)}?s=${encodeURIComponent(sessionId)}`);
