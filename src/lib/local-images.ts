@@ -1,3 +1,5 @@
+
+
 /**
  * 「キーワード -> 画像パス[]」の対応表
  * └ ファイルパスは必ず `/images/...` で始める
@@ -13,6 +15,8 @@ export const localImages: Record<string, string[]> = {
 
   // 例：/ascii/mountain
   mountain: ['/images/mountain/mountain01.jpg'],
+
+  night: ['/images/night/night01.jpg'],
 
   // 例：/ascii/mascot
   //   mascot: ['/images/mascot.jpg']

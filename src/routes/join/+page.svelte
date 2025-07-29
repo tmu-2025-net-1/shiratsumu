@@ -26,8 +26,8 @@
         const keyword = docSnap.data().keyword;
         statusMessage = `「${keyword}」のページへ移動します...`;
         
-        // /ascii/[keyword] ページへジャンプ
-        await goto(`/ascii/${encodeURIComponent(keyword)}`);
+        // /ascii/[keyword] ページへジャンプ（セッションIDもパラメータとして渡す）
+        await goto(`/ascii/${encodeURIComponent(keyword)}?s=${encodeURIComponent(sessionId)}`);
 
       } else {
         statusMessage = 'エラー: 無効なセッションです。';
@@ -52,5 +52,14 @@
     align-items: center;
     height: 100vh;
     font-family: sans-serif;
+    background-color: black;
+  }
+  h1 {
+    color: white;
+    margin-bottom: 20px;
+  }
+  p {
+    color: lightgray;
+    font-size: 1.2em;
   }
 </style>

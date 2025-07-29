@@ -17,13 +17,15 @@ export const load: PageServerLoad = async ({ params, url, fetch }) => {
   try {
     const imageData = await getUnsplashImage(keyword, fetch);
     
-    // 平坦なオブジェクトでデータを返す
+    console.log(`[load function] Unsplashで「${keyword}」の画像を取得しました:`, imageData.img);
+    
+    // p5-testと同じ構造でデータを返す
     return {
       img: imageData.img,
-      alt: imageData.alt,
+      altText: imageData.alt,
       q: keyword,
       chars: chars,
-      sessionId: sessionId // セッションIDを追加
+      sessionId: sessionId
     };
   } catch (err: any) {
     throw error(500, `画像の取得に失敗しました: ${err.message}`);
