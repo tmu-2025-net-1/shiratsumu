@@ -5,7 +5,8 @@
   import qrcode from 'qrcode-generator';
   import { doc, setDoc, updateDoc, runTransaction, onSnapshot } from 'firebase/firestore';
   import { db } from '$lib/firebase';
-  import EditableText from '$lib/component/EditableText.svelte'; 
+  import EditableText from '$lib/component/EditableText.svelte';
+  import CellTransition from '$lib/component/CellTransition.svelte'; 
 
   let p5Instance: any;
   let p5Constructor: any;
@@ -35,6 +36,9 @@
 
   // Grid-based text input
   let sessionId: string | null = null;
+  
+  // Page transition state
+  let isTransitioning = false;
 
   onMount(() => {
     console.log("1. onMountが開始されました。"); 
@@ -73,9 +77,15 @@
             }).then(() => {
               console.log('keywordを更新しました:', latestMessage.text);
               
-              // answer/[keyword]ページに移動
-              const encodedKeyword = encodeURIComponent(latestMessage.text);
-              goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+              // トランジションアニメーションを開始
+              isTransitioning = true;
+              
+              // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
+              setTimeout(() => {
+                const encodedKeyword = encodeURIComponent(latestMessage.text);
+                goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+              }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
+
             }).catch(error => {
               console.error('keyword更新エラー:', error);
             });
@@ -1108,9 +1118,42 @@
         window.location.href = '/hint';
       }
     } else {
-      const encodedKeyword = encodeURIComponent(qrText);
-      goto(`/ascii/${encodedKeyword}`);
+      // トランジションアニメーションを開始
+      isTransitioning = true;
+      
+      // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
+      setTimeout(() => {
+        const encodedKeyword = encodeURIComponent(qrText);
+        goto(`/ascii/${encodedKeyword}`);
+      }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
     }
+  }
+  
+  // トランジション完了時にページ遷移を実行
+  function handleTransitionComplete() {
+    // Firestoreから最新のconversationを取得して遷移先を決定
+    if (!sessionId) return;
+    
+    const sessionRef = doc(db, 'sessions', sessionId);
+    
+    // 最新のデータを一度だけ取得
+    import('firebase/firestore').then(({ getDoc }) => {
+      getDoc(sessionRef).then((doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          const conversation = data.conversation || [];
+          
+          if (conversation.length > 1) {
+            const latestMessage = conversation[conversation.length - 1];
+            if (latestMessage.sender === 'user') {
+              // answer/[keyword]ページに移動
+              const encodedKeyword = encodeURIComponent(latestMessage.text);
+              goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+            }
+          }
+        }
+      });
+    });
   }
   
   // Make navigation function available globally for p5.js
@@ -1288,6 +1331,14 @@ $: if (browser && typeof window !== 'undefined') {
     <button on:click={downloadImage}>Download</button>
   </div>
 </div>
+
+<!-- Page transition effect -->
+<CellTransition
+  cellSize={cellSize}
+  isActive={isTransitioning}
+  duration={4000}
+  on:complete={handleTransitionComplete}
+/>
 
 
 

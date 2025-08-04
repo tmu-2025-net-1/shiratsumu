@@ -6,6 +6,7 @@
   import { doc, onSnapshot } from 'firebase/firestore';
   import { db } from '$lib/firebase';
   import EditableText from '$lib/component/EditableText.svelte'; 
+  import CellTransition from '$lib/component/CellTransition.svelte'; 
 
   export let data: {
     sessionId: string | null;
@@ -43,6 +44,9 @@
   // 監視用の状態変数
   let lastConversationLength = 0;
   let isNavigating = false; // 遷移中フラグを追加
+  
+  // Page transition state
+  let isTransitioning = false;
 
   onMount(() => {
     console.log("Create page mounted with sessionId:", sessionId);
@@ -78,11 +82,16 @@
             // 遷移中フラグを立てる
             isNavigating = true;
             
-            const encodedKeyword = encodeURIComponent(latestMessage.text);
-            console.log('answerページに遷移:', `/answer/${encodedKeyword}?s=${sessionId}`);
+            // トランジションアニメーションを開始
+            isTransitioning = true;
             
-            // gotoを実行
-            goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+            // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
+            setTimeout(() => {
+              const encodedKeyword = encodeURIComponent(latestMessage.text);
+              console.log('answerページに遷移:', `/answer/${encodedKeyword}?s=${sessionId}`);
+              goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+            }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
+            
             return;
           }
         }
@@ -702,9 +711,42 @@
         window.location.href = '/hint';
       }
     } else {
-      const encodedKeyword = encodeURIComponent(qrText);
-      goto(`/ascii/${encodedKeyword}`);
+      // トランジションアニメーションを開始
+      isTransitioning = true;
+      
+      // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
+      setTimeout(() => {
+        const encodedKeyword = encodeURIComponent(qrText);
+        goto(`/ascii/${encodedKeyword}`);
+      }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
     }
+  }
+  
+  // トランジション完了時にページ遷移を実行
+  function handleTransitionComplete() {
+    // Firestoreから最新のconversationを取得して遷移先を決定
+    if (!sessionId) return;
+    
+    const sessionRef = doc(db, 'sessions', sessionId);
+    
+    // 最新のデータを一度だけ取得
+    import('firebase/firestore').then(({ getDoc }) => {
+      getDoc(sessionRef).then((doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          const conversation = data.conversation || [];
+          
+          if (conversation.length > 1) {
+            const latestMessage = conversation[conversation.length - 1];
+            if (latestMessage.sender === 'user') {
+              // answer/[keyword]ページに移動
+              const encodedKeyword = encodeURIComponent(latestMessage.text);
+              goto(`/answer/${encodedKeyword}?s=${sessionId}`);
+            }
+          }
+        }
+      });
+    });
   }
   
   // Make navigation function available globally for p5.js
@@ -749,6 +791,14 @@
 <footer>
     <a href="result?s={sessionId}">show result</a>
 </footer>
+
+<!-- Page transition effect -->
+<CellTransition
+  cellSize={cellSize}
+  isActive={isTransitioning}
+  duration={4000}
+  on:complete={handleTransitionComplete}
+/>
 
 
 

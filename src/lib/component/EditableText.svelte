@@ -106,10 +106,10 @@
       const addCellX = x + currentArray.length * cellSize;
       const isHovered = p.mouseX > addCellX && p.mouseX < addCellX + cellSize && p.mouseY > y && p.mouseY < y + cellSize;
 
-      p.fill(isHovered ? 'rgba(150, 255, 150, 0.6)' : 'rgba(200, 255, 200, 0.3)');
+      p.fill(isHovered ? 'rgba(255, 180, 80, 0.7)' : 'rgba(255, 200, 120, 0.4)');
       p.noStroke();
       p.rect(addCellX, y, cellSize, cellSize);
-      p.fill(isHovered ? '#090' : '#5A5');
+      p.fill(isHovered ? 'orange' : '#FFA500');
       p.text('+', addCellX + cellSize / 2, y + cellSize / 2);
       bounds.push({ x: addCellX, y, width: cellSize, height: cellSize, isAddButton: true });
     }
@@ -122,10 +122,9 @@
       // 送信可能かどうかで色を変更
       const canSubmit = isSubmittable;
       console.log('Submit button render:', { canSubmit, isSubmittable, value, length: value?.length }); // デバッグ
-      
-      const bgColor = canSubmit 
-        ? (isHovered ? 'rgba(0, 100, 255, 0.8)' : 'rgba(0, 100, 255, 0.6)')
-        : (isHovered ? 'rgba(150, 150, 150, 0.6)' : 'rgba(120, 120, 120, 0.4)');
+      const bgColor = canSubmit
+        ? (isHovered ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 165, 0, 0.7)') // 送信可能な場合はオレンジ系
+        : (isHovered ? 'rgba(200, 150, 80, 0.6)' : 'rgba(180, 120, 60, 0.4)'); // 送信不可は薄いオレンジ/茶系
       const textColorForButton = canSubmit ? '#FFF' : '#999';
 
       p.fill(bgColor);
