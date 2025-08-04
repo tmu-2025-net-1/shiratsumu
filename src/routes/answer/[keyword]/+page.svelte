@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { doc, runTransaction } from 'firebase/firestore';
+  import { doc, runTransaction, getDoc } from 'firebase/firestore';
   import { db } from '$lib/firebase';
 
   // サーバー(load関数)から渡されるデータを受け取る
@@ -36,12 +36,29 @@
     statusMessage = "次の単語を考えています...";
     
     try {
-      // 1. Gemini APIを呼び出す
+      // 1. セッションから既に使用された単語を取得
+      const usedWordsSessionRef = doc(db, 'sessions', data.sessionId);
+      const sessionDoc = await getDoc(usedWordsSessionRef);
+      let usedWords: string[] = [];
+      
+
+      if (sessionDoc.exists()) {
+        const sessionData = sessionDoc.data();
+        const conversation = sessionData.conversation || [];
+        const lastChar = answerText.charAt(answerText.length - 1).toLowerCase();
+        // lastCharacterで始まる単語をconversationから抽出
+        usedWords = conversation
+          .filter((msg: any) => msg.text && msg.text.toLowerCase().startsWith(lastChar))
+          .map((msg: any) => msg.text.toLowerCase());
+        console.log('usedWords:', usedWords);
+      }
+
+      // 2. Gemini APIを呼び出す（使用済み単語リストも送信）
       const lastChar = answerText.charAt(answerText.length - 1);
       const response = await fetch('/api/shiritori/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lastCharacter: lastChar })
+        body: JSON.stringify({ lastCharacter: lastChar, usedWords: usedWords })
       });
 
       if (!response.ok) {
@@ -54,9 +71,9 @@
 
       // 2. Firestoreに記録する
       statusMessage = "回答を記録しています...";
-      const sessionRef = doc(db, 'sessions', data.sessionId);
+      const firestoreSessionRef = doc(db, 'sessions', data.sessionId);
       await runTransaction(db, async (transaction) => {
-        const sessionDoc = await transaction.get(sessionRef);
+        const sessionDoc = await transaction.get(firestoreSessionRef);
         if (!sessionDoc.exists()) throw new Error('セッションが見つかりません');
 
         const currentData = sessionDoc.data();
@@ -71,7 +88,7 @@
         };
         
         conversation.push(newMessage);
-        transaction.update(sessionRef, { 
+        transaction.update(firestoreSessionRef, { 
           conversation: conversation,
           keyword: geminiAnswer, 
           updatedAt: new Date()

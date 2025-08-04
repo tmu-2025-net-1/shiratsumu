@@ -5,14 +5,14 @@
   import { doc, getDoc } from 'firebase/firestore';
   import { db } from '$lib/firebase';
 
-  let statusMessage = 'PCから情報を取得中...';
+  let statusMessage = '';
 
   onMount(async () => {
     // 1. URLからセッションIDを取得
     const sessionId = $page.url.searchParams.get('s');
 
     if (!sessionId) {
-      statusMessage = 'エラー: セッションIDが見つかりません。';
+      statusMessage = 'Error: Session ID not found.';
       return;
     }
 
@@ -30,10 +30,10 @@
         await goto(`/ascii/${encodeURIComponent(keyword)}?s=${encodeURIComponent(sessionId)}`);
 
       } else {
-        statusMessage = 'エラー: 無効なセッションです。';
+        statusMessage = 'Error: Invalid session.';
       }
     } catch (error) {
-      statusMessage = 'エラー: データの取得に失敗しました。';
+      statusMessage = 'Error: Failed to retrieve session data.';
       console.error(error);
     }
   });

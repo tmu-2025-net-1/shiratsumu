@@ -164,6 +164,11 @@
       let gridSize = 25;
       let gridCols: number, gridRows: number;
       let isAnimating = false;
+      
+      // 一旦保留　Settingsボタンの描画はここから
+      // Settings button bounds for click detection
+      let settingsButtonBounds: { x: number, y: number, width: number, height: number } | null = null;
+      // 一旦保留　Settingsボタンの描画はここまで
 
       // 画面幅に応じてセルのサイズを動的に決定する関数
       const updateResponsiveSizes = () => {
@@ -181,12 +186,29 @@
         fontSize = cellSize;
       };
 
+      // 一旦保留　Settingsボタンの描画はここから
+      // Settings button click detection
+      function isOnSettingsButton(mouseX: number, mouseY: number): boolean {
+        if (!settingsButtonBounds) return false;
+        return mouseX >= settingsButtonBounds.x && 
+               mouseX <= settingsButtonBounds.x + settingsButtonBounds.width &&
+               mouseY >= settingsButtonBounds.y && 
+               mouseY <= settingsButtonBounds.y + settingsButtonBounds.height;
+      }
+      // 一旦保留　Settingsボタンの描画はここまで
+
       
       p.setup = function() {
         console.log("6. p5.setup()が実行されました。");
-        const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+        // キャンバスの高さを動的に計算（説明テキストがすべて表示されるように）
+        const minHeight = p.windowHeight;
+        const estimatedContentHeight = p.windowHeight + 100; // 説明テキスト分の追加高さをさらに削減
+        const canvasHeight = Math.max(minHeight, estimatedContentHeight);
+        
+        const canvas = p.createCanvas(p.windowWidth, canvasHeight);
         canvasInstance = canvas;
         canvas.parent(qrContainer);
+        canvas.style('touch-action', 'pan-y');
         p.textAlign(p.CENTER, p.CENTER);
         p.textFont('monospace');
 
@@ -204,7 +226,12 @@
       };
       
       p.windowResized = function() {
-        p.resizeCanvas(p.windowWidth, p.windowHeight);
+        // キャンバスの高さを動的に再計算
+        const minHeight = p.windowHeight;
+        const estimatedContentHeight = p.windowHeight + 100; // 説明テキスト分の追加高さをさらに削減
+        const canvasHeight = Math.max(minHeight, estimatedContentHeight);
+        
+        p.resizeCanvas(p.windowWidth, canvasHeight);
 
         // ウィンドウリサイズ時にレスポンシブなサイズを再計算
         updateResponsiveSizes();
@@ -214,12 +241,25 @@
       };
       
       p.draw = function() {
+          // Update time for animations
+          time += 0.01;
+          
           p.background(255, 255, 255);
 
           // ★QRコードとテキストエリアの共通パラメータをここで一元管理
           const qrSize = qrData ? qrData.modules * cellSize : 0;
           const offsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
-          const offsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+          
+          // スマホとPCで異なる位置に配置
+          let verticalPosition;
+          if (p.width <= 435) {
+            // スマホ：さらに上に配置（20%の位置）
+            verticalPosition = 0.20;
+          } else {
+            // PC：従来の位置（25%の位置）
+            verticalPosition = 0.25;
+          }
+          const offsetY = Math.round((p.height * verticalPosition) / cellSize) * cellSize;
           
           // ★テキストエリアの正しい位置を計算
           const textInputRow = Math.floor(offsetY / cellSize) - 2;
@@ -233,6 +273,9 @@
 
           // 2. QRコードと関連ボタンを描画
           if (qrData) {
+              // 説明テキストを描画（QRコードの前に）
+              drawExplanationText(offsetX, offsetY, qrSize);
+              
               renderQR(); 
               drawGenerateButton();
               drawNavigationButton(offsetX, offsetY + qrSize);
@@ -248,13 +291,26 @@
           drawRipples();
           updateRipples();
       };
+
+        // 指が触れた瞬間のイベントをハンドル
+        p.touchStarted = function() {
+          // p5.jsによるデフォルトのタッチ開始動作をキャンセルし、
+          // ブラウザの動作（スクロール準備など）を妨げないようにtrueを返す。
+          return true;
+        };
+
+        // 指を動かした時のイベントをハンドル
+        p.touchMoved = function() {
+          // スクロールなどのブラウザのデフォルト動作を許可するためにtrueを返す。
+          return true;
+        };
         
       function initBackgroundGrid() {
         backgroundGrid = [];
         // Use the same grid size as QR cell size for perfect alignment
         gridSize = cellSize;
         gridCols = Math.floor(p.width / gridSize);
-        gridRows = Math.floor(p.height / gridSize);
+        gridRows = Math.floor(p.height / gridSize); // 新しいキャンバス高さに基づいて計算
         
         // Get current character set
         const currentCharSet = charSet;
@@ -279,9 +335,38 @@
         
         p.push();
         
+        // 説明テキストエリアをチェックするヘルパー関数
+        function isInExplanationArea(gridCol: number, gridRow: number): boolean {
+          if (!qrData) return false;
+          
+          const qrSize = qrData.modules * cellSize;
+          const qrOffsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+          const qrOffsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+          
+          // textInputRowを基準として計算
+          const textInputRow = Math.floor(qrOffsetY / cellSize) - 2;
+          
+          // Aブロック（QRコードの上）のエリア - textInputRowを基準に
+          const blockAStartRow = textInputRow - 18; // Welcome!の開始行
+          const blockAEndRow = textInputRow - 7;    // Aブロックの終了行
+          const blockAStartCol = Math.floor(qrOffsetX / cellSize);
+          const blockAEndCol = blockAStartCol + 24; // 適当な幅
+          
+          // Bブロック（QRコードの下）のエリア
+          const qrBottomRow = Math.floor((qrOffsetY + qrSize) / cellSize);
+          const blockBStartRow = qrBottomRow - 2;   // QRコードの2行下
+          const blockBEndRow = blockBStartRow + 15; // Bブロックの終了行
+          const blockBStartCol = Math.floor(qrOffsetX / cellSize);
+          const blockBEndCol = blockBStartCol + 30; // 適当な幅
+          
+          return (gridRow >= blockAStartRow && gridRow <= blockAEndRow && gridCol >= blockAStartCol && gridCol <= blockAEndCol) ||
+                 (gridRow >= blockBStartRow && gridRow <= blockBEndRow && gridCol >= blockBStartCol && gridCol <= blockBEndCol);
+        }
+        
         // Get navigation button position to skip drawing character there
         let navButtonGridCol = -1, navButtonGridRow = -1;
         let generateButtonCol = -1, generateButtonRow = -1;
+        let settingsButtonCol = -1, settingsButtonRow = -1;
 
         // テキストエリアの行・列を引数から計算
         const textStartRow = Math.floor(textAreaBounds.y / cellSize);
@@ -307,6 +392,13 @@
           // Generate button (below text input)
           generateButtonCol = textInputStartColNum + Math.floor(qrData.modules / 2);
           generateButtonRow = textInputRow + 1;
+          
+          //一旦保留　Settingsボタンの設定はここから
+          // Settings button (QRコードの右上に配置)
+          const qrRightCol = Math.floor(offsetX / cellSize) + qrData.modules; // QRコードの右端
+          settingsButtonCol = qrRightCol + 2; // QRから2セル右
+          settingsButtonRow = textInputRow - 2; // テキスト入力と同じ高さ
+          // 一旦保留　Settingsボタンの設定はここまで
         }
         
         if (backgroundEffect === 'staticGrid') {
@@ -334,7 +426,9 @@
             if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
                 isTextInputArea = true;
             }
-            if (isTextInputArea) continue;
+            
+            // Skip explanation text areas using helper function
+            if (isTextInputArea || isInExplanationArea(i, j)) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -378,7 +472,9 @@
             if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
                 isTextInputArea = true;
             }
-            if (isTextInputArea) continue;
+            
+            // Skip explanation text areas using helper function
+            if (isTextInputArea || isInExplanationArea(i, j)) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -424,7 +520,9 @@
             if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
                 isTextInputArea = true;
             }
-            if (isTextInputArea) continue;
+            
+            // Skip explanation text areas using helper function
+            if (isTextInputArea || isInExplanationArea(i, j)) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -471,7 +569,9 @@
             if (j === textStartRow && i >= textStartCol && i < textStartCol + textAreaBounds.length + 1) { // +1は「+」ボタンの分
                 isTextInputArea = true;
             }
-            if (isTextInputArea) continue;
+            
+            // Skip explanation text areas using helper function
+            if (isTextInputArea || isInExplanationArea(i, j)) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -514,7 +614,17 @@
           // Center the QR code and align with background grid
           let qrSize = modules * cellSize;
           let offsetX = (p.width - qrSize) / 2;
-          let offsetY = (p.height - qrSize) / 2;
+          
+          // スマホとPCで異なる位置に配置
+          let verticalPosition;
+          if (p.width <= 435) {
+            // スマホ：さらに上に配置（20%の位置）
+            verticalPosition = 0.20;
+          } else {
+            // PC：従来の位置（25%の位置）
+            verticalPosition = 0.25;
+          }
+          let offsetY = p.height * verticalPosition;
           
           // Snap to grid alignment
           offsetX = Math.round(offsetX / cellSize) * cellSize;
@@ -577,24 +687,24 @@
         
         p.push();
         
-        // Draw button background
-        if (isHovered) {
-          p.fill(255, 200, 100, 80); // Orange on hover
-        } else {
-          p.fill(255, 220, 150, 40); // Light orange
-        }
-        p.noStroke();
-        p.rect(buttonX, buttonY, cellSize, cellSize);
+        // // Draw button background
+        // if (isHovered) {
+        //   p.fill(255, 200, 100, 80); // Orange on hover
+        // } else {
+        //   p.fill(255, 220, 150, 40); // Light orange
+        // }
+        // p.noStroke();
+        // p.rect(buttonX, buttonY, cellSize, cellSize);
         
-        // Draw '=' character
-        if (isHovered) {
-          p.fill(200, 100, 0, 220); // Dark orange on hover
-        } else {
-          p.fill(180, 120, 60, 160); // Orange
-        }
+        // // Draw '=' character
+        // if (isHovered) {
+        //   p.fill(200, 100, 0, 220); // Dark orange on hover
+        // } else {
+        //   p.fill(180, 120, 60, 160); // Orange
+        // }
         
         p.textSize(fontSize);
-        p.text('=', buttonX + cellSize/2, buttonY + cellSize/2);
+        // p.text('=', buttonX + cellSize/2, buttonY + cellSize/2);
         
         p.pop();
         
@@ -658,6 +768,183 @@
         }
       }
       
+      function drawExplanationText(qrOffsetX: number, qrOffsetY: number, qrSize: number) {
+        if (!qrData) return;
+        
+        // textInputRowを基準として計算
+        const textInputRow = Math.floor(qrOffsetY / cellSize) - 2;
+        
+        // 一文字ずつ描画するヘルパー関数
+        function drawCharAtPosition(char: string, type: 'a' | 'b' | 'c', rowOffset: number, colOffset: number, color: {r: number, g: number, b: number, a: number} = {r: 80, g: 80, b: 80, a: 200}, bold: boolean = false) {
+          const targetRow = textInputRow + rowOffset;
+          
+          // タイプに応じたセルサイズを計算
+          let cellSpan: number;
+          let fontSize: number;
+          switch (type) {
+            case 'a': // 3×3セル相当
+              cellSpan = 3;
+              fontSize = cellSize * 2.5;
+              break;
+            case 'b': // 2×2セル相当
+              cellSpan = 2;
+              fontSize = cellSize * 1.5;
+              break;
+            case 'c': // 1×1セル相当
+              cellSpan = 1;
+              fontSize = cellSize * 0.9;
+              break;
+          }
+          
+          const charX = qrOffsetX + (colOffset * cellSize) + (cellSpan * cellSize / 2);
+          const charY = targetRow * cellSize;
+          
+          p.push();
+          p.textAlign(p.CENTER, p.CENTER);
+          p.textFont('monospace');
+          p.fill(color.r, color.g, color.b, color.a);
+          p.textSize(fontSize);
+          if (bold) {
+            p.textStyle(p.BOLD);
+          } else {
+            p.textStyle(p.NORMAL);
+          }
+          
+          p.text(char, charX, charY);
+          p.pop();
+          
+          return cellSpan; // 使用したセル数を返す
+        }
+        
+        // 文字列を一文字ずつ描画する関数
+        function drawStringAtRow(text: string, type: 'a' | 'b' | 'c', rowOffset: number, startCol: number, color: {r: number, g: number, b: number, a: number}, bold: boolean = false): number {
+          let currentCol = startCol;
+          const maxCols = 32; // QRの端から32セル分
+          
+          for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            
+            // 32セルを超える場合は折り返し（今回は目視で配置するため、警告のみ）
+            if (currentCol >= maxCols) {
+              console.warn(`Text overflow at position ${i} in "${text}"`);
+              break;
+            }
+            
+            const cellSpan = drawCharAtPosition(char, type, rowOffset, currentCol, color, bold);
+            
+            // タイプに応じたセル幅で次の位置を計算
+            switch (type) {
+              case 'a': currentCol += 3; break;
+              case 'b': currentCol += 2; break;
+              case 'c': currentCol += 1; break;
+            }
+          }
+          
+          return currentCol; // 最終位置を返す
+        }
+        
+        // Aブロック（QRコードの上）の描画
+        // Welcome! (aタイプ、-11行目)
+        drawStringAtRow('Welcome!', 'a', -11, 0, {r: 80, g: 80, b: 80, a: 220}, true);
+
+        // This is (cタイプ、-8行目)
+        let currentCol = drawStringAtRow('This is ', 'c', -7, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+        
+        // ASCII-QR (bタイプ、同じ行で続く)
+        currentCol = drawStringAtRow('ASCII-QR', 'b', -7, currentCol, {r: 60, g: 60, b: 60, a: 200}, true);
+
+        // , (cタイプ、同じ行で続く)
+        drawStringAtRow(',', 'c', -7, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        // where you can interact (cタイプ、-6行目)
+        currentCol = drawStringAtRow('where you can interact', 'c', -5, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        // through ASCII art (cタイプ，次の行)
+        currentCol = drawStringAtRow('with AI through ASCII art', 'c', -4, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+        
+        // Shiritori (bタイプ、次の行)
+        currentCol = drawStringAtRow('Shiritori', 'b', -2, 0, {r: 60, g: 60, b: 60, a: 200}, true);
+
+        // . (cタイプ、同じ行で続く)
+        drawStringAtRow('.', 'c', -2, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        // Bブロック（QRコードの下）の描画
+        // QRコードの下の開始位置を計算
+        const qrBottomRow = Math.floor((qrOffsetY + qrSize) / cellSize);
+        const blockBStartOffset = qrBottomRow - textInputRow + 4; // QRコードの4行下
+
+        // Scan (bタイプ)
+        currentCol = drawStringAtRow('Scan', 'b', blockBStartOffset, 0, {r: 60, g: 60, b: 60, a: 200}, true);
+        
+        // the QR code with your, (cタイプ、同じ行で続く)
+        currentCol = drawStringAtRow(' the QRcode with your, ', 'c', blockBStartOffset, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+        
+        // smartphone (cタイプ、次の行)
+        currentCol = drawStringAtRow('smartphone', 'c', blockBStartOffset + 2, 0, {r: 120, g: 120, b: 120, a: 160}, true);
+
+        // look for (bタイプ、同じ行で続く)
+        currentCol = drawStringAtRow('look for', 'b', blockBStartOffset + 2, currentCol, {r: 60, g: 60, b: 60, a: 200}, false);
+
+        // the(cタイプ、同じ行で続く)
+        drawStringAtRow('the', 'c', blockBStartOffset + 2, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        //  word (cタイプ，次の行)
+        currentCol = drawStringAtRow('word', 'c', blockBStartOffset + 4, 0, {r: 120, g: 120, b: 120, a: 160}, true);
+
+        // "{qrText}" (bタイプ、同じ行で続く)
+        currentCol = drawStringAtRow(`"${qrText}"`, 'b', blockBStartOffset + 4, currentCol, {r: 60, g: 60, b: 60, a: 200}, true);
+
+        // , and (cタイプ、同じ行で続く)
+        currentCol = drawStringAtRow(', and ', 'c', blockBStartOffset + 4, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        
+        // tap it (bタイプ、次の行)
+        currentCol = drawStringAtRow('tap it!', 'b', blockBStartOffset + 6, 0, {r: 60, g: 60, b: 60, a: 200}, true);
+        
+        // . (cタイプ、同じ行で続く)
+        drawStringAtRow('.', 'c', blockBStartOffset + 6, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        // If you send the next word... (cタイプ、次の行)
+        drawStringAtRow('If you send the next word, ', 'c', blockBStartOffset + 8, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        //something on this site may change based on your input... (cタイプ、次の行)
+        drawStringAtRow('something on this site may', 'c', blockBStartOffset + 9, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+
+        //may change based on your input...(cタイプ、次の行)
+        drawStringAtRow('change based on your input...', 'c', blockBStartOffset + 10, 0, {r: 120, g: 120, b: 120, a: 160}, false);
+        
+        // How many words (bタイプ、次の行)
+        drawStringAtRow('How many words', 'b', blockBStartOffset + 12, 0, {r: 60, g: 60, b: 60, a: 200}, true);
+
+        //can you connect? (bタイプ、次の行)
+        drawStringAtRow('can you connect?', 'b', blockBStartOffset + 14, 0, {r: 60, g: 60, b: 60, a: 200}, true);
+        
+        // 一旦保留　Settingsボタンの描画はここから
+        // Settings表示（QRコードの右上）
+        const qrRightCol = Math.floor(qrOffsetX / cellSize) + Math.floor(qrSize / cellSize); // QRコードの右端
+        const settingsStartCol = qrRightCol + 2; // QRから2セル右
+        if (p.width <= 435) {
+          // スマホ：「set」のみ表示（cタイプ）
+          drawStringAtRow('set', 'c', -2, settingsStartCol, {r: 100, g: 100, b: 100, a: 200}, true);
+        } else {
+          // PC：「Settings」表示（bタイプ）
+          drawStringAtRow('Settings', 'b', -2, settingsStartCol, {r: 100, g: 100, b: 100, a: 200}, true);
+        }
+        
+        // Settingsボタンの境界を保存（クリック検出用）
+        const settingsText = p.width <= 435 ? 'set' : 'Settings';
+        const settingsWidth = settingsText.length * (p.width <= 435 ? 1 : 2); // タイプに応じたセル幅
+        settingsButtonBounds = {
+          x: settingsStartCol * cellSize,
+          y: (textInputRow - 2) * cellSize, // テキスト入力と同じ高さ
+          width: settingsWidth * cellSize,
+          height: cellSize
+        };
+        //一旦保留　Settingsボタンの描画はここまで
+      }
+
+
+      
       function drawRipples() {
         for (let ripple of ripples) {
           p.push();
@@ -684,21 +971,7 @@
       p.mousePressed = function() {
           // --- 判定の順序が最重要 ---
 
-          // 1. 最初に「Settings開閉ボタン」自体がクリックされたかを判定
-          const toggleButton = document.querySelector('#toggleControls');
-          if (toggleButton) {
-              const rect = toggleButton.getBoundingClientRect();
-              if (p.mouseX >= rect.left && p.mouseX <= rect.right && p.mouseY >= rect.top && p.mouseY <= rect.bottom) {
-                  // Svelteの関数を直接呼び出して状態を切り替える
-                  if (typeof window !== 'undefined' && (window as any).toggleSettings) {
-                      (window as any).toggleSettings();
-                  }
-                  // p5がイベントを処理したので、ここで終了
-                  return false;
-              }
-          }
-
-          // 2. 次に「Settingsパネル（開いている場合）」がクリックされたかを判定
+          // 1. 次に「Settingsパネル（開いている場合）」がクリックされたかを判定
           if (showControls) {
               // この時点でボタンのクリックは既に処理済み。
               // ここに到達した場合、クリックはパネルの他の部分なので、ブラウザに任せる。
@@ -712,7 +985,15 @@
               return false;
           }
 
-          // 4. その他のキャンバス上のボタン類（Generate, Navigation）のクリック処理
+          // 4. その他のキャンバス上のボタン類（Settings, Generate, Navigation）のクリック処理
+          // 一旦保留　Settingsボタンのクリック処理　はここから
+          // Settings button (character-based)
+          if (isOnSettingsButton(p.mouseX, p.mouseY)) {
+              showControls = !showControls;
+              return false;
+          }
+          // 一旦保留　Settingsボタンのクリック処理　はここまで
+          
           if (p.generateButtonBounds) {
               const bounds = p.generateButtonBounds;
               if (p.mouseX >= bounds.x && p.mouseX <= bounds.x + bounds.width && p.mouseY >= bounds.y && p.mouseY <= bounds.y + bounds.height) {
@@ -737,7 +1018,7 @@
           if (interactivity === 'ripple') {
             ripples.push({ x: p.mouseX, y: p.mouseY, size: 0, speed: 8, alpha: 255, decay: 5 });
           }
-          return false;
+          return true;
       };
       // Make the generateQR function accessible from outside
       p.generateQR = function() {
@@ -924,9 +1205,7 @@ $: if (browser && typeof window !== 'undefined') {
   fontSize={fontSize}
 />
 
-<button id="toggleControls" >
-  ⚙️ Settings
-</button>
+<!-- Settings button is now drawn using the character positioning system -->
 
 <div class="controls-panel" class:show={showControls}>
   <div>
@@ -1017,15 +1296,18 @@ $: if (browser && typeof window !== 'undefined') {
     margin: 0;
     padding: 0;
     background: #fff;
-    overflow: hidden;
+    overflow: auto; /* スクロールを許可 */
+    height: auto; /* 高さを自動調整 */
+    min-height: 100%; /* 最小高さを画面高さに設定 */
+    -webkit-overflow-scrolling: touch; /* iOS Safariでスムーズスクロール */
   }
 
   #qrContainer {
-    position: fixed;
+    position: absolute; /* fixedからabsoluteに変更してスクロールに対応 */
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    min-height: 100%; /* 最小高さを画面の高さに設定 */
   }
 
   .controls-panel {
@@ -1081,20 +1363,5 @@ $: if (browser && typeof window !== 'undefined') {
 
   .controls-panel button:hover {
     background: #0059c9;
-  }
-
-  #toggleControls {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    z-index: 2001;
-    font-size: 12px;
-    pointer-events: auto;
   }
 </style>

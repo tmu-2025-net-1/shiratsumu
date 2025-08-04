@@ -26,3 +26,20 @@ export const shiritoriWords: { [key: string]: string[] } = {
   y: ['yacht', 'yarn', 'yolk', 'yogurt', 'yo-yo', 'yardstick'],
   z: ['zebra', 'zipper', 'zoo', 'zigzag']
 };
+
+/**
+ * 動的に単語を辞書に追加する関数
+ * @param firstChar 単語の最初の文字（小文字）
+ * @param word 追加する単語（小文字）
+ */
+export function addWordToDictionary(firstChar: string, word: string): void {
+  if (!shiritoriWords[firstChar]) {
+    shiritoriWords[firstChar] = [];
+  }
+  
+  // 重複チェック
+  if (!shiritoriWords[firstChar].includes(word)) {
+    shiritoriWords[firstChar].push(word);
+    console.log(`Added word "${word}" to dictionary under "${firstChar}"`);
+  }
+}

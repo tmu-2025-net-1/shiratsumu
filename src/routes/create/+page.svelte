@@ -484,22 +484,22 @@
         
         p.push();
         
-        if (isHovered) {
-          p.fill(255, 200, 100, 80);
-        } else {
-          p.fill(255, 220, 150, 40);
-        }
-        p.noStroke();
-        p.rect(buttonX, buttonY, cellSize, cellSize);
+        // if (isHovered) {
+        //   p.fill(255, 200, 100, 80);
+        // } else {
+        //   p.fill(255, 220, 150, 40);
+        // }
+        // p.noStroke();
+        // p.rect(buttonX, buttonY, cellSize, cellSize);
         
-        if (isHovered) {
-          p.fill(200, 100, 0, 220);
-        } else {
-          p.fill(180, 120, 60, 160);
-        }
+        // if (isHovered) {
+        //   p.fill(200, 100, 0, 220);
+        // } else {
+        //   p.fill(180, 120, 60, 160);
+        // }
         
-        p.textSize(fontSize);
-        p.text('=', buttonX + cellSize/2, buttonY + cellSize/2);
+        // p.textSize(fontSize);
+        // p.text('=', buttonX + cellSize/2, buttonY + cellSize/2);
         
         p.pop();
         
