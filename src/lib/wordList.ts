@@ -17,7 +17,7 @@ export const shiritoriWords: { [key: string]: string[] } = {
   p: ['pen', 'plane', 'pig', 'piano', 'pear', 'pencil', 'pizza', 'pyramid', 'penguin', 'pumpkin'],
   q: ['queen', 'quilt', 'quail', 'quarter', 'quiver', 'quill'], // qは条件に合う単語が少ないです
   r: ['rabbit', 'robot', 'rocket', 'ring', 'rain', 'river', 'road', 'roof', 'rose'],
-  s: ['sun', 'star', 'snake', 'ship', 'sword', 'spoon', 'spider', 'strawberry', 'shoe', 'swing'],
+  s: ['sun', 'star', 'snake', 'ship', 'sword', 'spoon', 'spider', 'strawberry', 'shoe'],
   t: ['table', 'tiger', 'tree', 'train', 'tent', 'telephone', 'television', 'tomato', 'tower', 'turtle'],
   u: ['umbrella', 'unicorn', 'unicycle', 'uniform', 'ukulele', 'urn'],
   v: ['violin', 'vase', 'volcano', 'van', 'vegetable', 'vest', 'vine', 'vulture'],

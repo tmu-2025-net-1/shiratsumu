@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	import EditableText from '$lib/component/EditableText.svelte';
+	import LoadingTransition from '$lib/component/LoadingTransition.svelte';
 
-	import { doc, updateDoc, runTransaction, getDoc } from 'firebase/firestore';
+	import { doc, updateDoc, runTransaction, getDoc, onSnapshot } from 'firebase/firestore';
+	import { goto } from '$app/navigation';
 
 	import { db } from '$lib/firebase';
 
@@ -75,15 +77,62 @@
 
 	let hasBeenClicked = false;
 
-	// let dynamicTextColor = "rgba(137, 137, 137, 0.8)";
+	let dynamicTextColor = "rgba(137, 137, 137, 0.8)";
 
-	let dynamicTextColor = 'rgba(255, 0, 0, 0.8)'; //テスト用に赤く(これはpush時に削除)
+	// let dynamicTextColor = 'rgba(255, 0, 0, 0.8)'; //テスト用に赤く(これはpush時に削除)
 
 	let dynamicShowAddButton = false;
 
 	// 編集状態を管理する変数
 
 	let isEditingText = false;
+
+	// ヘルプテキスト関連の変数
+	let helpText = '';
+	let showHelpText = false;
+
+	// メッセージ表示関連の変数（成功/失敗メッセージ用）
+	let messageText = '';
+	let showMessage = false;
+	let messageTimeout: ReturnType<typeof setTimeout> | null = null;
+	let navigationTimeout: ReturnType<typeof setTimeout> | null = null; // ページ遷移用タイマー
+
+	// ヘルプテキストの更新
+	$: {
+		if (isEditingText && editableTextInstance) {
+			const status = editableTextInstance.getEditingStatus();
+			if (status) {
+				helpText = status.message;
+				showHelpText = true;
+			} else {
+				showHelpText = false;
+			}
+		} else {
+			showHelpText = false;
+		}
+	}
+
+	// メッセージを表示する関数
+	function showMessageOverlay(message: string, duration: number = 5000) {
+		messageText = message;
+		showMessage = true;
+		
+		// 既存のタイマーをクリア
+		if (messageTimeout) {
+			clearTimeout(messageTimeout);
+		}
+		
+		// 指定時間後にメッセージを非表示
+		messageTimeout = setTimeout(() => {
+			showMessage = false;
+			messageText = '';
+			// メッセージが消えるときも再描画
+			if (p5Instance) p5Instance.needsRedraw = true;
+		}, duration);
+		
+		// p5.jsの再描画をトリガー
+		if (p5Instance) p5Instance.needsRedraw = true;
+	}
 
 	// しりとり機能用の変数
 
@@ -93,6 +142,20 @@
 
 	let targetMessageId: number | null = null;
 
+	// Firestoreの監視用変数
+	let unsubscribeFirestore: (() => void) | null = null;
+	let lastConversationLength = 0; // 初期の会話の長さを記録
+
+	// ローディングトランジション用の変数
+	let isLoading = true;
+	let loadingCellSize = 15; // 初期値（動的に更新される）
+
+	// ローディング完了時の処理
+	function handleLoadingComplete() {
+		isLoading = false;
+		console.log('ローディングトランジション完了');
+	}
+
 	// しりとり送信処理
 
 	async function handleShiritoriSubmit(newValue: string) {
@@ -101,7 +164,7 @@
 		// targetMessageIdが設定されていない場合は送信しない
 
 		if (targetMessageId === null) {
-			alert('まだ初期化が完了していません。少し待ってから再試行してください。');
+			showMessageOverlay('Initialization not yet complete. Please wait and try again.', 6000);
 
 			return;
 		}
@@ -120,7 +183,7 @@
 					if (!sessionDoc.exists()) {
 						console.error('セッションが見つかりません:', data.sessionId);
 
-						return { success: false, message: 'セッションが見つかりません' };
+						return { success: false, message: 'Session not found' };
 					}
 
 					const currentData = sessionDoc.data();
@@ -137,7 +200,7 @@
 					if (hasTargetResponse) {
 						// 既に他のユーザーが回答済み
 
-						return { success: false, message: '残念！他の人が先に回答しました。' };
+						return { success: false, message: 'Sorry! Someone else answered first.' };
 					}
 
 					// 新しいメッセージを追加（ページロード時に決定したIDで送信）
@@ -168,18 +231,18 @@
 				if (result.success) {
 					console.log('Firestoreに送信完了:', newValue);
 
-					alert(result.message); // "success"を表示
+					showMessageOverlay('Submission complete! Please wait...', 4000); // 送信完了メッセージを4秒表示
 				} else {
 					console.log('送信失敗:', result.message);
 
-					alert(result.message); // "残念！他の人が先に回答しました。"を表示
+					showMessageOverlay(result.message, 6000); // "Sorry! Someone else answered first."を6秒表示
 
 					return; // 失敗時はローカル状態を更新しない
 				}
 			} catch (error) {
 				console.error('Firestore送信エラー:', error);
 
-				alert('送信中にエラーが発生しました。');
+				showMessageOverlay('An error occurred during submission.', 6000);
 
 				return; // エラー時はローカル状態を更新しない
 			}
@@ -224,6 +287,19 @@
 				}
 			}, 0);
 		}
+
+		// ヘルプテキストの更新も値の変化に応じて行う
+		if (isEditingText && editableTextInstance) {
+			setTimeout(() => {
+				const status = editableTextInstance.getEditingStatus();
+				if (status) {
+					helpText = status.message;
+					showHelpText = true;
+				} else {
+					showHelpText = false;
+				}
+			}, 0);
+		}
 	}
 
 	// ★3. コンポーネントの位置を保持
@@ -235,15 +311,62 @@
 	let editableTextCellSize = 0;
 
 	onMount(() => {
-        // セッションIDの取得処理（変更なし）
+        // ローディングトランジションを開始
+        isLoading = true;
+        
+        // ローディング用のセルサイズを画面幅から計算
+        const TARGET_COLS = 72;
+        loadingCellSize = window.innerWidth / TARGET_COLS;
+
+        // セッションIDの取得処理とFirestoreの監視開始
         if (data.sessionId) {
             const sessionRef = doc(db, 'sessions', data.sessionId);
+            
+            // 初期データの取得
             getDoc(sessionRef)
                 .then((docSnap) => {
                     if (docSnap.exists()) {
                         const currentData = docSnap.data();
                         const conversation = currentData.conversation || [];
                         targetMessageId = conversation.length + 1;
+                        lastConversationLength = conversation.length; // 初期の長さを記録
+                        
+                        // Firestoreのリアルタイム監視を開始
+                        unsubscribeFirestore = onSnapshot(sessionRef, (doc) => {
+                            if (doc.exists()) {
+                                const firestoreData = doc.data();
+                                const conversation = firestoreData.conversation || [];
+                                
+                                // 新しいメッセージが追加された場合
+                                if (conversation.length > lastConversationLength) {
+                                    // 最新のメッセージを取得
+                                    const latestMessage = conversation[conversation.length - 1];
+                                    
+                                    // ユーザーからの新しいメッセージかチェック（自分以外のユーザー）
+                                    if (latestMessage && latestMessage.sender === 'user') {
+                                        console.log('他のユーザーからの新しいメッセージを検出:', latestMessage.text);
+
+                                        // メッセージを表示してから遷移
+                                        showMessageOverlay('Another user answered! Moving to next turn...', 3000);
+                                        
+                                        // 既存のナビゲーションタイマーをクリア
+                                        if (navigationTimeout) {
+                                            clearTimeout(navigationTimeout);
+                                        }
+                                        
+                                        // 3秒後にjoinページに移動（from=aiパラメータ付きで移動）
+                                        navigationTimeout = setTimeout(() => {
+                                            goto(`/join?s=${data.sessionId}&from=ai`);
+                                        }, 3000);
+                                    }
+                                    
+                                    // 会話の長さを更新
+                                    lastConversationLength = conversation.length;
+                                }
+                            }
+                        }, (error) => {
+                            console.error('Firestore監視エラー:', error);
+                        });
                     } else {
                         console.error('セッションが見つかりません');
                     }
@@ -266,13 +389,38 @@
                 return false;
             }
 
-            // 編集中は、コンポーネント自身の判定ロジックに任せる
+            // キャンバスの相対座標を取得（より安全な方法）
+            const canvas = p5Instance.canvas;
+            if (!canvas) return false;
+            
+            // フレームを待ってからrectを取得（レイアウトが確定するまで待機）
+            const rect = canvas.getBoundingClientRect();
+            
+            // rectが有効かチェック
+            if (rect.width === 0 || rect.height === 0) {
+                console.warn('Canvas rect is not ready:', rect);
+                return false;
+            }
+            
+            const canvasX = clientX - rect.left;
+            const canvasY = clientY - rect.top;
+
+            // デバッグ情報を追加
+            console.log('Click debug:', {
+                clientX, clientY,
+                rectLeft: rect.left, rectTop: rect.top,
+                canvasX, canvasY,
+                canvasWidth: rect.width, canvasHeight: rect.height,
+                isEditingText
+            });
+
+            // 編集中は、画面中央の座標系で判定
             if (isEditingText) {
                 // p5.jsのmouseX/Yを一時的に設定して判定させる
                 const originalMouseX = p5Instance.mouseX;
                 const originalMouseY = p5Instance.mouseY;
-                p5Instance.mouseX = clientX;
-                p5Instance.mouseY = clientY;
+                p5Instance.mouseX = canvasX;
+                p5Instance.mouseY = canvasY;
 
                 const clicked = editableTextInstance.mousePressed(p5Instance);
 
@@ -291,8 +439,15 @@
             const offY = (p5Instance.height - p5Instance.srcImg.height * scl) / 2 + panY;
 
             // スクリーン座標からp5キャンバス内の座標に変換
-            const transformedX = (clientX - offX) / scl;
-            const transformedY = (clientY - offY) / scl;
+            const transformedX = (canvasX - offX) / scl;
+            const transformedY = (canvasY - offY) / scl;
+
+            // デバッグ情報を追加
+            console.log('Transform debug:', {
+                baseScale, scl, zoom,
+                offX, offY, panX, panY,
+                transformedX, transformedY
+            });
 
             // p5.jsのmouseX/Yを一時的に設定して判定させる
             const originalMouseX = p5Instance.mouseX;
@@ -312,14 +467,41 @@
 
         // ▼▼▼ マウス操作のハンドラ (判定処理を追加) ▼▼▼
         const handleMouseDown = (e: MouseEvent) => {
-            // ★★★ 文字クリック判定 ★★★
-            if (checkIfClickOnText(e.clientX, e.clientY)) {
-                handleFirstClick();
-                return; // 文字の上ならパン処理をしない
-            }
-            isPointerDown = true;
-            lastPointerX = e.clientX;
-            lastPointerY = e.clientY;
+            e.preventDefault();
+            
+            // レイアウトの確定を待つためのリトライロジック
+            const tryClickDetection = (retryCount = 0) => {
+                if (retryCount > 3) {
+                    // 3回試行して失敗した場合は通常のパン処理を実行
+                    isPointerDown = true;
+                    lastPointerX = e.clientX;
+                    lastPointerY = e.clientY;
+                    return;
+                }
+                
+                // ★★★ 文字クリック判定 ★★★
+                if (checkIfClickOnText(e.clientX, e.clientY)) {
+                    handleFirstClick();
+                    return; // 文字の上ならパン処理をしない
+                }
+                
+                // レイアウトがまだ準備できていない可能性があるため再試行
+                if (p5Instance?.canvas) {
+                    const rect = p5Instance.canvas.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        // キャンバスがまだ準備できていない場合は少し待って再試行
+                        requestAnimationFrame(() => tryClickDetection(retryCount + 1));
+                        return;
+                    }
+                }
+                
+                // 通常のパン処理
+                isPointerDown = true;
+                lastPointerX = e.clientX;
+                lastPointerY = e.clientY;
+            };
+            
+            tryClickDetection();
         };
 
         const handleMouseMove = (e: MouseEvent) => {
@@ -416,6 +598,10 @@
                 sk.setup = async () => {
                     sk.createCanvas(sk.windowWidth, sk.windowHeight).parent(container);
                     sk.needsRedraw = true;
+                    
+                    // キャンバスの準備が完了するまで少し待つ
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
                     try {
                         srcImg = await sk.loadImage(data.img);
                         sk.srcImg = srcImg;
@@ -431,6 +617,9 @@
                         editableTextX = randomCol * editableTextCellSize;
                         editableTextY = randomRow * editableTextCellSize;
                         needsRedraw = true;
+                        
+                        // 初期化完了をログに出力
+                        console.log('p5.js setup completed, canvas ready for interactions');
                     } catch (e) {
                         console.error('画像の読み込みに失敗:', e);
                     }
@@ -441,7 +630,7 @@
                 };
                 sk.draw = () => {
                     if (!srcImg) return;
-                    if (needsRedraw || sk.needsRedraw) {
+                    if (needsRedraw || sk.needsRedraw || showMessage) {
                         renderAscii();
                         needsRedraw = false;
                         sk.needsRedraw = false;
@@ -473,11 +662,165 @@
                             const centeredX = centerX - textWidth / 2;
                             const centeredY = positionY - editingCellSize / 2;
                             editableTextInstance.draw(sk, centeredX, centeredY, editingCellSize);
+                            
+                            // ヘルプテキストをp5.jsキャンバス内に描画
+                            if (editableTextInstance && showHelpText && helpText) {
+                                sk.push();
+                                sk.fill(0, 0, 0, 200); // 半透明の黒背景
+                                sk.stroke(255, 255, 255, 100);
+                                sk.strokeWeight(2);
+                                
+                                // ヘルプテキストのサイズを計算
+                                const helpFontSize = sk.width < 768 ? 14 : 18;
+                                sk.textFont('monospace', helpFontSize);
+                                sk.textAlign(sk.CENTER, sk.CENTER);
+                                
+                                // スマホ用の適切な折り返し処理
+                                const maxWidth = sk.width * 0.85; // 画面幅の85%を使用
+                                const padding = 20;
+                                const availableWidth = maxWidth - padding * 2;
+                                
+                                // 単語単位で折り返すためのヘルパー関数
+                                const wrapText = (text: string, maxWidth: number) => {
+                                    const words = text.split(' ');
+                                    const lines: string[] = [];
+                                    let currentLine = '';
+                                    
+                                    for (const word of words) {
+                                        const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                                        const testWidth = sk.textWidth(testLine);
+                                        
+                                        if (testWidth <= maxWidth) {
+                                            currentLine = testLine;
+                                        } else {
+                                            if (currentLine) {
+                                                lines.push(currentLine);
+                                                currentLine = word;
+                                            } else {
+                                                // 単語が長すぎる場合は強制改行
+                                                lines.push(word);
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (currentLine) {
+                                        lines.push(currentLine);
+                                    }
+                                    
+                                    return lines;
+                                };
+                                
+                                const lines = wrapText(helpText, availableWidth);
+                                
+                                // 背景の矩形サイズを計算
+                                const lineHeight = helpFontSize + 8; // 行の高さ
+                                const rectHeight = lines.length * lineHeight + padding * 2;
+                                const rectWidth = maxWidth;
+                                const rectX = sk.width / 2 - rectWidth / 2;
+                                
+                                // スマホの場合はもっと上部に表示（キーボード対応）
+                                let rectY;
+                                if (sk.width < 768) {
+                                    rectY = sk.height * 0.12 - rectHeight / 2; // 上部12%の位置
+                                } else {
+                                    rectY = sk.height * 0.6 - rectHeight / 2; // PC版は60%
+                                }
+                                
+                                // 背景矩形を描画
+                                sk.rect(rectX, rectY, rectWidth, rectHeight, 10);
+                                
+                                // テキストを行ごとに描画
+                                sk.fill(255);
+                                sk.noStroke();
+                                const startY = rectY + padding + helpFontSize / 2;
+                                lines.forEach((line, index) => {
+                                    const lineY = startY + index * lineHeight;
+                                    sk.text(line, sk.width / 2, lineY);
+                                });
+                                sk.pop();
+                            }
                         } else {
                             sk.translate(offX, offY);
                             sk.scale(scl);
                             editableTextInstance.draw(sk, editableTextX, editableTextY, editableTextCellSize);
                         }
+                        
+                        // メッセージ表示（ヘルプテキストと同じスタイルで、編集中でなくても表示）
+                        if (showMessage && messageText) {
+                            sk.push();
+                            // 座標変換をリセットして画面座標で描画
+                            sk.resetMatrix();
+                            
+                            sk.fill(0, 0, 0, 200); // 半透明の黒背景
+                            sk.stroke(255, 255, 255, 100);
+                            sk.strokeWeight(2);
+                            
+                            // メッセージのサイズを計算
+                            const messageFontSize = sk.width < 768 ? 16 : 20;
+                            sk.textFont('monospace', messageFontSize);
+                            sk.textAlign(sk.LEFT, sk.CENTER); // 左揃えに変更
+                            
+                            // スマホ用の適切な折り返し処理
+                            const maxWidth = sk.width * 0.85; // 画面幅の85%を使用
+                            const padding = 20;
+                            const availableWidth = maxWidth - padding * 2;
+                            
+                            // 単語単位で折り返すためのヘルパー関数（ヘルプテキストと同じ）
+                            const wrapText = (text: string, maxWidth: number) => {
+                                const words = text.split(' ');
+                                const lines: string[] = [];
+                                let currentLine = '';
+                                
+                                for (const word of words) {
+                                    const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                                    const testWidth = sk.textWidth(testLine);
+                                    
+                                    if (testWidth <= maxWidth) {
+                                        currentLine = testLine;
+                                    } else {
+                                        if (currentLine) {
+                                            lines.push(currentLine);
+                                            currentLine = word;
+                                        } else {
+                                            // 単語が長すぎる場合は強制改行
+                                            lines.push(word);
+                                        }
+                                    }
+                                }
+                                
+                                if (currentLine) {
+                                    lines.push(currentLine);
+                                }
+                                
+                                return lines;
+                            };
+                            
+                            const lines = wrapText(messageText, availableWidth);
+                            
+                            // 背景の矩形サイズを計算
+                            const lineHeight = messageFontSize + 8; // 行の高さ
+                            const rectHeight = lines.length * lineHeight + padding * 2;
+                            const rectWidth = maxWidth;
+                            const rectX = sk.width / 2 - rectWidth / 2;
+                            
+                            // メッセージは画面の正確な中央に表示
+                            const rectY = sk.height / 2 - rectHeight / 2;
+                            
+                            // 背景矩形を描画
+                            sk.rect(rectX, rectY, rectWidth, rectHeight, 10);
+                            
+                            // テキストを行ごとに描画（左揃え）
+                            sk.fill(255);
+                            sk.noStroke();
+                            const startY = rectY + padding + messageFontSize / 2;
+                            const textX = rectX + padding; // 左端からpadding分だけ右に
+                            lines.forEach((line, index) => {
+                                const lineY = startY + index * lineHeight;
+                                sk.text(line, textX, lineY); // 左揃えで描画
+                            });
+                            sk.pop();
+                        }
+                        
                         sk.pop();
                     }
                 };
@@ -527,7 +870,7 @@
             });
         });
 
-        // ▼▼▼ クリーンアップ処理（変更なし） ▼▼▼
+        // ▼▼▼ クリーンアップ処理（Firestore監視の停止を追加） ▼▼▼
         return () => {
             container.removeEventListener('mousedown', handleMouseDown);
             container.removeEventListener('mousemove', handleMouseMove);
@@ -537,8 +880,34 @@
             container.removeEventListener('touchmove', handleTouchMove);
             container.removeEventListener('touchend', handleTouchEnd);
             container.removeEventListener('touchcancel', handleTouchEnd);
+            
+            // Firestoreの監視を停止
+            if (unsubscribeFirestore) {
+                unsubscribeFirestore();
+                unsubscribeFirestore = null;
+            }
         };
     });
+
+	// コンポーネント破棄時にFirestore監視を停止
+	onDestroy(() => {
+		if (unsubscribeFirestore) {
+			unsubscribeFirestore();
+			unsubscribeFirestore = null;
+		}
+		
+		// メッセージタイマーもクリア
+		if (messageTimeout) {
+			clearTimeout(messageTimeout);
+			messageTimeout = null;
+		}
+		
+		// ナビゲーションタイマーもクリア
+		if (navigationTimeout) {
+			clearTimeout(navigationTimeout);
+			navigationTimeout = null;
+		}
+	});
 </script>
 
 <div bind:this={container} aria-label={data.alt}></div>
@@ -560,15 +929,24 @@
 	sessionId={data.sessionId}
 />
 
+<!-- ローディングトランジション -->
+<LoadingTransition
+	cellSize={loadingCellSize}
+	isActive={isLoading}
+	duration={3000}
+	loadingText={data.q}
+	on:complete={handleLoadingComplete}
+/>
+
 <!-- ズームコントロール -->
 
-<div class="zoom-controls">
+<!-- <div class="zoom-controls">
 	<button on:click={zoomIn} aria-label="ズームイン">+</button>
 
 	<button on:click={resetZoom} aria-label="リセット">⌂</button>
 
 	<button on:click={zoomOut} aria-label="ズームアウト">-</button>
-</div>
+</div> -->
 
 <style>
 	:global(html),

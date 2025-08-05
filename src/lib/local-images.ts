@@ -25,6 +25,10 @@ export const localImages: Record<string, string[]> = {
     '/images/moon/moon01.jpg',
   ],
 
+  train:[
+    '/images/train/train.jpg'
+  ],
+
   wanpi: [
     '/images/wanpi/wanpi01.jpg',
     '/images/wanpi/wanpi02.jpg',

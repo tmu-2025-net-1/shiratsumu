@@ -9,12 +9,14 @@ export async function getUnsplashImage(keyword: string, fetch: typeof globalThis
   try {
     const cachedImage = await getCachedImage(q);
     if (cachedImage) {
-      console.log(`[server] Using cached image for keyword: ${q}`);
+      console.log(`[server] キャッシュから画像を取得: ${q} -> ${cachedImage.imageUrl}`);
       await updateLastUsed(q);
       return {
         img: cachedImage.imageUrl,
         alt: cachedImage.altText,
       };
+    } else {
+      console.log(`[server] キャッシュに画像が見つかりません: ${q}`);
     }
   } catch (error) {
     console.error('[server] Error checking cache:', error);
@@ -67,12 +69,14 @@ export async function getUnsplashImage(keyword: string, fetch: typeof globalThis
 
     // Unsplash画像もFirestoreに記録
     try {
+      console.log(`[server] Firestoreキャッシュに保存中: ${q} -> ${result.img}`);
       await setCachedImage({
         keyword: q,
         imageUrl: result.img,
         altText: result.alt,
         isLocal: false,
       });
+      console.log(`[server] Firestoreキャッシュ保存完了: ${q}`);
     } catch (error) {
       console.error('[server] Error caching Unsplash image:', error);
     }

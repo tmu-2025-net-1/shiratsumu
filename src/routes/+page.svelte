@@ -83,8 +83,8 @@
               // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
               setTimeout(() => {
                 const encodedKeyword = encodeURIComponent(latestMessage.text);
-                goto(`/answer/${encodedKeyword}?s=${sessionId}`);
-              }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
+                goto(`/answer/${encodedKeyword}`);
+              }, 4300); // 4300ms（アニメーション4000ms + 余裕300ms）
 
             }).catch(error => {
               console.error('keyword更新エラー:', error);
@@ -1124,7 +1124,7 @@
       // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
       setTimeout(() => {
         const encodedKeyword = encodeURIComponent(qrText);
-        goto(`/ascii/${encodedKeyword}`);
+        goto(`/ascii/${encodedKeyword}?s=${sessionId}`);
       }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
     }
   }

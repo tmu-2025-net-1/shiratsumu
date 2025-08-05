@@ -64,6 +64,8 @@
         The rally continued for <span class="count">{conversation.length}</span> turns!
       </p>
     {/if}
+    <!-- 横棒 -->
+    <hr class="my-4 border-t border-gray-300" />
   </header>
 
   <main>
@@ -75,8 +77,18 @@
       <p class="status">このセッションには、まだ会話の記録がありません。</p>
     {:else}
       <div class="timeline">
+        <!-- adminメッセージを最初に表示 -->
         {#each conversation as message, i}
-          <!-- adminのメッセージは表示しない -->
+          {#if message.sender === 'admin'}
+            <div class="admin-message">
+              <span class="admin-text">{message.text}</span>
+            </div>
+          {/if}
+        {/each}
+
+        <!-- ユーザーとAIの会話を表示 -->
+        {#each conversation as message, i}
+          <!-- adminのメッセージは上で表示済みなのでスキップ -->
           {#if message.sender !== 'admin'}
             <!-- 矢印の接続部分 (2番目以降のメッセージで表示) -->
             {#if i > 0 && conversation[i-1]}
@@ -107,13 +119,6 @@
 </div>
 
 <style>
-  :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    background-color: #1a1a1a;
-    color: #f0f0f0;
-    margin: 0;
-  }
-
   .container {
     max-width: 600px;
     margin: 0 auto;
@@ -122,42 +127,69 @@
     flex-direction: column;
     min-height: 100vh;
     box-sizing: border-box;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #000000;
+    color: #ffffff;
+    position: relative;
+    width: 100%;
+  }
+
+  .container::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #000000;
+    z-index: -1;
   }
 
   header {
     text-align: center;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding-bottom: 1.5rem;
     margin-bottom: 2rem;
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   h1 {
     font-size: 2.5rem;
     font-weight: 700;
-    color: #fff;
+    color: #ffffff;
     margin: 0 0 0.5rem 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    text-shadow: none;
   }
 
   .summary {
     font-size: 1.1rem;
-    color: #aaa;
+    color: #ffffff;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   }
 
   .count {
     font-weight: bold;
     font-size: 1.5rem;
-    color: #88d8ff;
+    color: #ff6b35;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   }
 
   main {
     flex-grow: 1;
+    padding-bottom: 6rem; /* footerのスペースを確保 */
   }
 
   .status {
     text-align: center;
-    color: #888;
+    color: #ffffff;
     font-size: 1.1rem;
     padding: 3rem 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   }
   .status.error {
     color: #ff8a8a;
@@ -168,6 +200,27 @@
     flex-direction: column;
   }
 
+  .admin-message {
+    text-align: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .admin-text {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: #ffffff;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    line-height: 1.4;
+  }
+
   .message {
     padding: 0.8rem 1.2rem;
     border-radius: 18px;
@@ -175,17 +228,19 @@
     max-width: 75%;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   }
 
   .message.user {
-    background-color: #005c99;
+    background: rgba(255, 255, 255, 0.1);
     align-self: flex-start;
     border-bottom-left-radius: 4px;
   }
 
   .message.ai {
-    background-color: #3a3a3a;
+    background: rgba(255, 107, 53, 0.2);
     align-self: flex-end;
     border-bottom-right-radius: 4px;
     text-align: right;
@@ -194,19 +249,26 @@
   .sender {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #bbb;
+    color: #cccccc;
     margin-bottom: 0.2rem;
     opacity: 0.8;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   }
 
   .message.user .sender {
-    color: #b3e0ff;
+    color: #ffffff;
+  }
+
+  .message.ai .sender {
+    color: #ff6b35;
   }
 
   .text {
     font-size: 1.25rem;
     font-weight: 500;
     word-break: break-all;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    color: #ffffff;
   }
 
   .connector {
@@ -214,51 +276,64 @@
     align-items: center;
     justify-content: center;
     margin: 1rem 0;
-    color: #777;
+    color: #cccccc;
   }
 
   .arrow {
     font-size: 1.5rem;
     margin: 0 1rem;
-    color: #666;
+    color: #cccccc;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   }
 
   .char {
-    font-family: monospace;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 1.2rem;
     font-weight: bold;
     padding: 0.3rem 0.6rem;
     border-radius: 50%;
-    background-color: #2c2c2c;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .char.last {
-    color: #ffb3b3;
+    color: #ff6b35;
   }
 
   .char.first {
-    color: #b3ffb3;
+    color: #ff6b35;
   }
 
   footer {
-    text-align: center;
-    margin-top: 3rem;
+    position: fixed;
+    bottom: 5rem; /* footerの上に配置 */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
   }
 
   .home-button {
     display: inline-block;
     padding: 0.8rem 2rem;
-    background-color: #88d8ff;
-    color: #111;
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
     text-decoration: none;
     font-weight: bold;
     border-radius: 50px;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
   .home-button:hover {
-    background-color: #fff;
+    background: rgba(255, 107, 53, 0.1);
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(136, 216, 255, 0.2);
+    box-shadow: 0 12px 40px rgba(255, 107, 53, 0.2);
+    scale: 1.05;
+    color: #ff6b35;
+    border-color: rgba(255, 107, 53, 0.3);
   }
 </style>

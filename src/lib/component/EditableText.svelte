@@ -1,12 +1,11 @@
 <script lang="ts">
-  // p5プロパティは削除し、各関数が引数でpを受け取る形
   export let value: string;
   export let x: number = 0;
   export let y: number = 0;
   export let cellSize: number = 15;
   export let fontSize: number = 15;
   export let showAddButton: boolean = true;
-  export let textColor = '#333';
+  export let textColor = '#333'; 
   export let backgroundColor = 'transparent';
   export let hoverBackgroundColor = 'rgba(200, 200, 200, 0.4)';
   export let editingBackgroundColor = 'rgba(100, 150, 255, 0.6)';
@@ -21,6 +20,7 @@
   
   // 編集状態を親コンポーネントに公開
   export { editingMode as isEditing };
+  
   let hiddenInputElement: HTMLInputElement;
   let inputTextArray: string[] = [];
   let bounds: Array<{ x: number, y: number, width: number, height: number, index?: number, isAddButton?: boolean, isSubmitButton?: boolean }> = [];
@@ -45,6 +45,55 @@
      value.toLowerCase().startsWith(lastCharOfInitial) && 
     //  value.length > initialValue.length && 
      value.length >= 3;
+
+  // 編集状態の詳細情報を親に提供
+  export const getEditingStatus = () => {
+    if (!isShiritoriMode || !editingMode) return null;
+    
+    const currentLength = value ? value.length : 0;
+    const lastChar = lastCharOfInitial;
+    
+    // 最初に表示された状態かつ．最後の文字で始まっていない場合
+    if (value === initialValue || !value.toLowerCase().startsWith(lastChar)) {
+      return {
+        type: 'initial',
+        message: "Found it, nice work. Try deleting all characters.", // English: "Found it, nice work. Try deleting all characters.",
+        lastChar
+      };
+    }
+    
+    // 完全に一文字になった時（最後の文字のみの状態）
+    if (currentLength === 1 && value === lastChar) {
+      return {
+        type: 'one-char',
+        message: `Great job. The first word is '${lastChar}'.`,
+        lastChar
+      };
+    }
+    
+    // 3文字未満（一文字の状態から文字を追加し始めた時）
+    if (currentLength < 3 && currentLength > 1) {
+      // 最後の文字で始まっているかチェック
+      if (value.toLowerCase().startsWith(lastChar)) {
+        return {
+          type: 'too-short',
+          message: `What is a word of three or more characters starting with "${lastChar}"?`,
+          lastChar
+        };
+      }
+    }
+    
+    // 3文字以上（送信可能）
+    if (isSubmittable) {
+      return {
+        type: 'ready-to-submit',
+        message: `You can send the word by pressing Enter or ">".`,
+        lastChar
+      };
+    }
+    
+    return null;
+  };
 
   
   // 値の変化を確実に検知するためのリアクティブステート

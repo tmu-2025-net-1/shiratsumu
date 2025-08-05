@@ -47,6 +47,11 @@
   
   // Page transition state
   let isTransitioning = false;
+  
+  // Variables for displaying previous and current words
+  let previousWord = "";
+  let currentWord = "";
+  let displayText = "";
 
   onMount(() => {
     console.log("Create page mounted with sessionId:", sessionId);
@@ -105,6 +110,27 @@
           const textLength = latestMessage.text ? latestMessage.text.length : 0;
           qrText = "?".repeat(textLength) || "?";
           console.log('最新テキスト文字数:', textLength, 'qrText更新:', qrText);
+          
+          // 前の単語と現在の単語を取得してdisplayTextを更新
+          if (conversation.length >= 2) {
+            // 前の単語（一つ前のメッセージ）
+            const previousMessage = conversation[conversation.length - 2];
+            previousWord = previousMessage.text || "";
+            
+            // 現在の単語（最新のメッセージ）
+            currentWord = latestMessage.text || "";
+            
+            // 表示テキストを作成: {前の単語}>{今の単語(?)}
+            const currentWordDisplay = "?".repeat(currentWord.length) || "?";
+            displayText = `${previousWord} > ${currentWordDisplay}`;
+          } else if (conversation.length === 1) {
+            // 最初のメッセージの場合
+            currentWord = latestMessage.text || "";
+            const currentWordDisplay = "?".repeat(currentWord.length) || "?";
+            displayText = currentWordDisplay;
+          }
+          
+          console.log('displayText更新:', displayText);
         }
       }
     });
@@ -259,6 +285,9 @@
               renderQR(); 
               drawGenerateButton();
               drawNavigationButton(offsetX, offsetY + qrSize);
+              
+              // QRコードの上にdisplayTextを表示
+              drawDisplayText(offsetX, offsetY);
           }
         
           // 3. EditableTextコンポーネントを描画
@@ -356,6 +385,22 @@
                 isTextInputArea = true;
             }
             if (isTextInputArea) continue;
+            
+            // Skip displayText area (above QR code)
+            let isDisplayTextArea = false;
+            if (qrData && displayText) {
+              const qrSize = qrData.modules * cellSize;
+              const qrOffsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+              const qrOffsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+              const displayTextRow = Math.floor((qrOffsetY - cellSize * 4) / cellSize);
+              const displayTextCols = Math.ceil(displayText.length * fontSize * 2 / cellSize); // フォントサイズ2倍に対応
+              const displayTextStartCol = Math.floor(qrOffsetX / cellSize) + Math.floor(qrData.modules / 2) - Math.floor(displayTextCols / 2);
+              if (j >= displayTextRow - 1 && j <= displayTextRow + 1 && 
+                  i >= displayTextStartCol - 2 && i <= displayTextStartCol + displayTextCols + 2) {
+                isDisplayTextArea = true;
+              }
+            }
+            if (isDisplayTextArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -396,6 +441,22 @@
                   isTextInputArea = true;
               }
               if (isTextInputArea) continue;
+              
+              // Skip displayText area (above QR code)
+              let isDisplayTextArea = false;
+              if (qrData && displayText) {
+                const qrSize = qrData.modules * cellSize;
+                const qrOffsetX = Math.round(((p.width - qrSize) / 2) / cellSize) * cellSize;
+                const qrOffsetY = Math.round(((p.height - qrSize) / 2) / cellSize) * cellSize;
+                const displayTextRow = Math.floor((qrOffsetY - cellSize * 4) / cellSize);
+                const displayTextCols = Math.ceil(displayText.length * fontSize * 2 / cellSize); // フォントサイズ2倍に対応
+                const displayTextStartCol = Math.floor(qrOffsetX / cellSize) + Math.floor(qrData.modules / 2) - Math.floor(displayTextCols / 2);
+                if (j >= displayTextRow - 1 && j <= displayTextRow + 1 && 
+                    i >= displayTextStartCol - 2 && i <= displayTextStartCol + displayTextCols + 2) {
+                  isDisplayTextArea = true;
+                }
+              }
+              if (isDisplayTextArea) continue;
               
               let x = i * cellSize + cellSize / 2;
               let y = j * cellSize + cellSize / 2;
@@ -564,6 +625,34 @@
         }
       }
       
+      function drawDisplayText(qrStartX: number, qrStartY: number) {
+        if (!displayText || !qrData) return;
+        
+        // QRコードの上にテキストを表示する位置を計算
+        const textY = qrStartY - cellSize * 4; // QRコードの4行上（少し上に移動）
+        const textX = qrStartX + (qrData.modules * cellSize / 2); // QRコードの中央
+        
+        // 背景を少し暗くして文字を見やすくする
+        p.push();
+        p.fill(0, 0, 0, 100);
+        p.noStroke();
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textSize(fontSize * 2); // フォントサイズを2倍に拡大
+        
+        // テキストの幅を測定して背景矩形を描画
+        const textWidth = p.textWidth(displayText);
+        const padding = cellSize * 0.8; // パディングも少し大きく
+        p.fill(255, 255, 255, 220); // 背景をより不透明に
+        p.rect(textX - textWidth/2 - padding, textY - fontSize - padding, 
+               textWidth + padding * 2, fontSize * 2 + padding * 2);
+        
+        // テキストを描画
+        p.fill(0, 0, 0, 255);
+        p.text(displayText, textX, textY);
+        
+        p.pop();
+      }
+      
       function drawRipples() {
         for (let ripple of ripples) {
           p.push();
@@ -718,7 +807,7 @@
       setTimeout(() => {
         const encodedKeyword = encodeURIComponent(qrText);
         goto(`/ascii/${encodedKeyword}`);
-      }, 4500); // 4500ms（アニメーション4000ms + 余裕500ms）
+      }, 4300); // 4300ms（アニメーション4000ms + 余裕300ms）
     }
   }
   
