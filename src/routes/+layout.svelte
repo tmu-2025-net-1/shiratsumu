@@ -37,7 +37,7 @@
 <div class="fixed left-1/2 transform -translate-x-1/2 z-40 transition-all duration-500 ease-in-out {showModal ? 'bottom-[30vh]' : 'bottom-8'}">
 	<button 
 		onclick={toggleModal}
-		class="w-12 h-12 backdrop-blur-md bg-white/10 border border-white/20 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center text-xl hover:bg-white/20 hover:shadow-xl hover:scale-105 {showModal ? 'text-white' : 'text-white'}"
+		class="w-12 h-12 backdrop-blur-md bg-white/5 border border-white/50 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center text-xl hover:bg-white/20 hover:shadow-xl hover:scale-105 {showModal ? 'text-white' : 'text-gray-200'}"
 		style="backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);"
 		aria-label="Who made this?"
 	>
@@ -49,7 +49,7 @@
 <div class="fixed inset-x-0 bottom-0 z-50 transition-transform duration-500 ease-in-out {showModal ? 'translate-y-0' : 'translate-y-full'}">
 	<div class="flex justify-center">
 		<div 
-			class="backdrop-blur-md bg-white/20 border-t border-white/30 rounded-t-3xl shadow-lg max-w-sm w-full mx-4 font-mono"
+			class="backdrop-blur-md bg-white/20 border-t border-white/100 rounded-t-3xl shadow-lg max-w-sm w-full mx-4 font-mono"
 			style="backdrop-filter: blur(10px); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.1); height: 30vh; min-height: 250px;"
 		>
 
