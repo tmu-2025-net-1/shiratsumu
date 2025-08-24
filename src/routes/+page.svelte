@@ -83,7 +83,8 @@
               // 固定時間後にページ遷移を実行（アニメーション時間 + 少しの余裕）
               setTimeout(() => {
                 const encodedKeyword = encodeURIComponent(latestMessage.text);
-                goto(`/answer/${encodedKeyword}`);
+                console.log('answerページに遷移:', `/answer/${encodedKeyword}?s=${sessionId}`);
+                goto(`/answer/${encodedKeyword}?s=${sessionId}`);
               }, 4300); // 4300ms（アニメーション4000ms + 余裕300ms）
 
             }).catch(error => {

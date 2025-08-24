@@ -11,12 +11,13 @@
 
   const dispatch = createEventDispatcher();
 
-  let canvasElement: HTMLCanvasElement;
+  let canvasElement: HTMLCanvasElement | undefined;
   let ctx: CanvasRenderingContext2D | null = null;
   let animationId: number;
   let startTime = 0;
   let isAnimating = false;
   let canvasReady = false;
+  let isResizeListenerAdded = false;
 
   // グリッドデータ
   let grid: Array<Array<{
@@ -37,18 +38,58 @@
     waveOffset: number;
   }> = [];
 
+  function initializeCanvas() {
+    if (!browser || !canvasElement) return false;
+
+    // canvas要素が存在し、getContextメソッドが利用可能かチェック
+    if (typeof canvasElement.getContext !== 'function') {
+      console.error('LoadingTransition: Canvas element does not support getContext');
+      return false;
+    }
+
+    try {
+      ctx = canvasElement.getContext('2d');
+      if (!ctx) {
+        console.error('LoadingTransition: Failed to get 2D rendering context');
+        return false;
+      }
+
+      setupCanvas();
+      canvasReady = true;
+      
+      // リサイズイベントリスナーを一度だけ追加
+      if (!isResizeListenerAdded) {
+        window.addEventListener('resize', handleResize);
+        isResizeListenerAdded = true;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('LoadingTransition: Error during canvas initialization:', error);
+      return false;
+    }
+  }
+
   onMount(() => {
     if (!browser) return;
 
-    ctx = canvasElement.getContext('2d');
-    if (!ctx) return;
-
-    setupCanvas();
-    canvasReady = true;
-    window.addEventListener('resize', handleResize);
+    // canvas要素の準備を待つ
+    const checkCanvasReady = () => {
+      if (canvasElement) {
+        initializeCanvas();
+      } else {
+        // canvas要素がまだ準備できていない場合、少し待ってから再試行
+        setTimeout(checkCanvasReady, 10);
+      }
+    };
+    
+    checkCanvasReady();
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      if (isResizeListenerAdded) {
+        window.removeEventListener('resize', handleResize);
+        isResizeListenerAdded = false;
+      }
       if (animationId) {
         cancelAnimationFrame(animationId);
       }
@@ -56,16 +97,23 @@
   });
 
   function setupCanvas() {
-    if (!canvasElement || !ctx) return;
+    if (!canvasElement || !ctx || typeof canvasElement.getContext !== 'function') {
+      console.error('LoadingTransition: Canvas element or context not ready in setupCanvas');
+      return;
+    }
 
-    // ミニバージョンでも通常バージョンでも全画面サイズを使用
-    canvasElement.width = window.innerWidth;
-    canvasElement.height = window.innerHeight;
+    try {
+      // ミニバージョンでも通常バージョンでも全画面サイズを使用
+      canvasElement.width = window.innerWidth;
+      canvasElement.height = window.innerHeight;
 
-    if (isMini) {
-      initMiniChars();
-    } else {
-      initGrid();
+      if (isMini) {
+        initMiniChars();
+      } else {
+        initGrid();
+      }
+    } catch (error) {
+      console.error('LoadingTransition: Error during canvas setup:', error);
     }
   }
 
@@ -118,19 +166,46 @@
   }
 
   function handleResize() {
-    setupCanvas();
+    if (!browser) return;
+    
+    // canvas要素とコンテキストの安全性チェック
+    if (!canvasElement || !ctx || !canvasReady) {
+      console.warn('LoadingTransition: Cannot handle resize, canvas not ready');
+      return;
+    }
+    
+    // getContextメソッドの存在チェック
+    if (typeof canvasElement.getContext !== 'function') {
+      console.error('LoadingTransition: Canvas element does not support getContext during resize');
+      return;
+    }
+    
+    try {
+      setupCanvas();
+    } catch (error) {
+      console.error('LoadingTransition: Error during resize handling:', error);
+    }
   }
 
   function startAnimation() {
     if (isAnimating) return;
+    
+    if (!canvasElement || !ctx) {
+      console.error('LoadingTransition: Cannot start animation, canvas not ready');
+      return;
+    }
 
     isAnimating = true;
     startTime = performance.now();
 
     // キャンバスを初期化（ミニバージョンの場合は透明、通常は黒）
-    if (ctx) {
+    try {
       ctx.fillStyle = isMini ? 'rgba(0, 0, 0, 0)' : 'rgba(0, 0, 0, 1)';
       ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+    } catch (error) {
+      console.error('LoadingTransition: Error during canvas initialization:', error);
+      isAnimating = false;
+      return;
     }
 
     if (isMini) {
@@ -154,26 +229,31 @@
   }
 
   function animate() {
-    if (!ctx || !isAnimating) return;
+    if (!ctx || !isAnimating || !canvasElement) return;
 
-    const currentTime = performance.now() - startTime;
-    const progress = Math.min(currentTime / duration, 1);
+    try {
+      const currentTime = performance.now() - startTime;
+      const progress = Math.min(currentTime / duration, 1);
 
-    if (isMini) {
-      // ミニバージョンの場合、トレイル効果のために半透明の背景を重ねる
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-      ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-      animateMini(currentTime);
-    } else {
-      // 通常バージョンは完全にクリア
-      ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-      ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-      animateGrid(currentTime, progress);
-    }
+      if (isMini) {
+        // ミニバージョンの場合、トレイル効果のために半透明の背景を重ねる
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+        animateMini(currentTime);
+      } else {
+        // 通常バージョンは完全にクリア
+        ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+        ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+        animateGrid(currentTime, progress);
+      }
 
-    if (progress < 1) {
-      animationId = requestAnimationFrame(animate);
-    } else {
+      if (progress < 1) {
+        animationId = requestAnimationFrame(animate);
+      } else {
+        finishAnimation();
+      }
+    } catch (error) {
+      console.error('LoadingTransition: Error during animation:', error);
       finishAnimation();
     }
   }
@@ -275,12 +355,22 @@
   }
 
   // isActiveが変更されたときにアニメーションを開始
-  $: if (isActive && browser && canvasReady && ctx !== null) {
-    if (!isMini) {
-      // 通常バージョンのみ文字を初期化
-      initMiniChars();
+  $: if (isActive && browser && canvasReady && ctx !== null && canvasElement) {
+    // canvas要素とコンテキストの最終チェック
+    if (typeof canvasElement.getContext === 'function') {
+      if (!isMini) {
+        // 通常バージョンのみ文字を初期化
+        initMiniChars();
+      }
+      startAnimation();
+    } else {
+      console.error('LoadingTransition: Canvas element does not support getContext in reactive statement');
     }
-    startAnimation();
+  }
+
+  // canvas要素が変更されたときの再初期化
+  $: if (canvasElement && browser && !canvasReady) {
+    initializeCanvas();
   }
 
   // isActiveがfalseになったときにアニメーションを停止
