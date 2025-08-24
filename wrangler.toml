@@ -1,29 +1,17 @@
+# Cloudflare Pages configuration
+# This file is used for Cloudflare Pages Functions, not for direct deployment
+# The main deployment is handled through Cloudflare Pages dashboard
+
 name = "shiratsumu"
 compatibility_date = "2024-01-01"
-pages_build_output_dir = ".svelte-kit/cloudflare"
 
-[build]
-command = "npm run build"
+# Pages-specific configuration
+[env.production.vars]
+ENVIRONMENT = "production"
 
-[build.environment_variables]
-NODE_VERSION = "18"
+[env.preview.vars]
+ENVIRONMENT = "preview"
 
-# Cloudflare Pages Functions configuration
-[env.production]
-vars = { ENVIRONMENT = "production" }
-
-[env.preview]
-vars = { ENVIRONMENT = "preview" }
-
-# KV bindings (if needed in the future)
-# [[kv_namespaces]]
-# binding = "MY_KV_NAMESPACE"
-# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyy"
-
-# Environment variables that should be set in the Cloudflare dashboard:
+# Note: Environment variables should be set in Cloudflare Pages dashboard:
 # - UNSPLASH_KEY: Your Unsplash API key
 # - FIREBASE_* variables if using Firebase
-
-[placement]
-mode = "smart"
