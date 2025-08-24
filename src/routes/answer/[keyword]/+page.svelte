@@ -221,33 +221,101 @@
       // 2.5. AIの回答で画像を事前取得（Unsplash APIキャッシュ）
       statusMessage = "次の画像を準備しています...";
       let imagePreloadSuccess = false;
-      try {
-        // 専用APIエンドポイントで画像を事前取得・キャッシュ
-        const preloadResponse = await fetch('/api/preload-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: geminiAnswer })
-        });
+      let preloadAttempts = 0;
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1秒
+
+      const attemptImagePreload = async (): Promise<boolean> => {
+        preloadAttempts++;
+        console.log(`[processNextTurn] Image preload attempt ${preloadAttempts}/${maxRetries} for: ${geminiAnswer}`);
         
-        if (preloadResponse.ok) {
-          const preloadData = await preloadResponse.json();
-          if (preloadData.success && preloadData.img) {
-            console.log('画像事前取得完了:', geminiAnswer, 'URL:', preloadData.img);
-            imagePreloadSuccess = true;
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒タイムアウト
+
+          const preloadResponse = await fetch('/api/preload-image', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({ keyword: geminiAnswer }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+
+          console.log(`[processNextTurn] Preload response status: ${preloadResponse.status}`);
+
+          if (preloadResponse.ok) {
+            const preloadData = await preloadResponse.json();
+            console.log('[processNextTurn] Preload response data:', {
+              success: preloadData.success,
+              hasImg: !!preloadData.img,
+              step: preloadData.step,
+              error: preloadData.error
+            });
+
+            if (preloadData.success && preloadData.img) {
+              console.log(`[processNextTurn] Image preload successful for ${geminiAnswer}:`, {
+                url: preloadData.img.substring(0, 100) + '...',
+                processingTime: preloadData.metadata?.processingTime
+              });
+              return true;
+            } else {
+              console.warn(`[processNextTurn] Preload failed - success: ${preloadData.success}, error: ${preloadData.error}`);
+              return false;
+            }
           } else {
-            console.warn('画像事前取得失敗:', preloadData.error || 'レスポンスデータが不正');
+            let errorDetails = `HTTP ${preloadResponse.status}`;
+            try {
+              const errorData = await preloadResponse.json();
+              errorDetails = errorData.error || errorData.message || errorDetails;
+              console.warn(`[processNextTurn] Preload API error:`, {
+                status: preloadResponse.status,
+                step: errorData.step,
+                error: errorDetails
+              });
+            } catch (e) {
+              console.warn(`[processNextTurn] Failed to parse error response: ${errorDetails}`);
+            }
+            return false;
           }
-        } else {
-          const errorData = await preloadResponse.json().catch(() => ({}));
-          console.warn('画像事前取得に失敗:', preloadResponse.status, errorData.error);
+
+        } catch (fetchError: any) {
+          if (fetchError.name === 'AbortError') {
+            console.warn(`[processNextTurn] Image preload timed out for: ${geminiAnswer}`);
+          } else {
+            console.warn(`[processNextTurn] Image preload network error:`, {
+              message: fetchError.message,
+              name: fetchError.name
+            });
+          }
+          return false;
         }
-      } catch (unsplashError) {
-        console.warn('画像事前取得でエラー:', unsplashError);
+      };
+
+      // リトライ機能付きで画像事前取得を実行
+      while (!imagePreloadSuccess && preloadAttempts < maxRetries) {
+        imagePreloadSuccess = await attemptImagePreload();
+        
+        if (!imagePreloadSuccess && preloadAttempts < maxRetries) {
+          console.log(`[processNextTurn] Retrying in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
       }
 
-      // 画像取得が失敗した場合はFirestore書き込みを中止
       if (!imagePreloadSuccess) {
-        throw new Error('画像の事前取得に失敗したため、処理を中止します');
+        console.error(`[processNextTurn] All ${maxRetries} preload attempts failed for: ${geminiAnswer}`);
+        
+        // 本番環境では画像取得失敗時も処理を継続（デグレードモード）
+        const isProduction = window.location.hostname !== 'localhost';
+        if (isProduction) {
+          console.warn('[processNextTurn] Production mode: continuing despite image preload failure');
+          imagePreloadSuccess = true; // 強制的に処理を継続
+        } else {
+          throw new Error(`画像の事前取得に${maxRetries}回失敗しました: ${geminiAnswer}`);
+        }
       }
 
       // 3. Firestoreに記録する（画像取得成功後のみ）
