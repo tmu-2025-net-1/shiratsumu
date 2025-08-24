@@ -53,8 +53,23 @@
   function handleTransitionLoadingComplete() {
     isTransitionLoading = false;
     console.log('遷移ローディングトランジション完了');
-    // 遷移ローディング完了後にcreateページに移動
-    goto(`/create?sessionId=${data.sessionId}`);
+    console.log('Session ID:', data.sessionId);
+    
+    // sessionIdの存在確認
+    if (!data.sessionId) {
+      console.error('sessionIdが存在しないため、createページに遷移できません');
+      statusMessage = "エラー: セッションIDが見つかりません";
+      return;
+    }
+    
+    try {
+      // 遷移ローディング完了後にcreateページに移動
+      console.log('createページに遷移中...');
+      goto(`/create?sessionId=${data.sessionId}`);
+    } catch (error) {
+      console.error('ページ遷移でエラーが発生しました:', error);
+      statusMessage = `ページ遷移エラー: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
   }
 
   // ミニローディングを最低時間確保して停止する関数
@@ -71,6 +86,30 @@
       // 既に最低時間が経過している場合は即座に停止
       isMiniLoading = false;
     }
+  }
+
+  // ミニローディングを最低時間確保して停止する関数（Promise版）
+  function stopMiniLoadingWithMinTimeAsync(): Promise<void> {
+    return new Promise((resolve) => {
+      const elapsedTime = Date.now() - miniLoadingStartTime;
+      const remainingTime = Math.max(0, MINI_LOADING_MIN_DURATION - elapsedTime);
+      
+      console.log('ミニローディング停止処理:', { elapsedTime, remainingTime });
+      
+      if (remainingTime > 0) {
+        // 最低時間に達していない場合は待機してから停止
+        setTimeout(() => {
+          isMiniLoading = false;
+          console.log('ミニローディング停止完了（待機後）');
+          resolve();
+        }, remainingTime);
+      } else {
+        // 既に最低時間が経過している場合は即座に停止
+        isMiniLoading = false;
+        console.log('ミニローディング停止完了（即座）');
+        resolve();
+      }
+    });
   }
 
   // p5インスタンスのクリーンアップアニメーション
@@ -113,14 +152,22 @@
     
     animate();
   }
+  
 
   // 次のターンに進むメインの処理
   async function processNextTurn() {
+    console.log('processNextTurn開始');
+    console.log('isProcessing:', isProcessing, 'hasProcessedTurn:', hasProcessedTurn, 'sessionId:', data.sessionId);
+    
     // 処理中、または処理済み、またはセッションIDがない場合は何もしない
-    if (isProcessing || hasProcessedTurn || !data.sessionId) return;
+    if (isProcessing || hasProcessedTurn || !data.sessionId) {
+      console.log('processNextTurnスキップ - 条件不一致');
+      return;
+    }
     
     isProcessing = true;
     hasProcessedTurn = true; // 処理の開始を記録し、二重実行を防ぐ
+    console.log('processNextTurn実行開始');
     
     // クリーンアップアニメーションを開始
     startCleanupAnimation();
@@ -231,11 +278,23 @@
 
       console.log('AI回答をFirestoreに記録完了');
       statusMessage = "次のページへ移動します...";
-      stopMiniLoadingWithMinTime(); // 最低時間確保してミニローディングを停止
-
+      
+      // ミニローディングの停止を待ってから遷移ローディングを開始
+      await stopMiniLoadingWithMinTimeAsync();
+      
       // 遷移前ローディングを開始（少し遅延を入れて自然に切り替え）
+      console.log('遷移前ローディング開始準備中...');
       setTimeout(() => {
+        console.log('遷移前ローディング開始');
         isTransitionLoading = true;
+        
+        // フォールバック: 一定時間後に強制的にページ遷移
+        setTimeout(() => {
+          if (isTransitionLoading) {
+            console.warn('遷移ローディングが完了しなかったため、強制的にページ遷移を実行');
+            handleTransitionLoadingComplete();
+          }
+        }, TRANSITION_LOADING_DURATION + 1000); // 設定時間+1秒のバッファ
       }, 500);
 
     } catch (error) {
@@ -244,6 +303,18 @@
       isProcessing = false;
       hasProcessedTurn = false; // エラー時は再試行を許可
       stopMiniLoadingWithMinTime(); // エラー時も最低時間確保してミニローディングを停止
+      
+      // エラー発生時でもページ遷移を試行（sessionIdがある場合）
+      if (data.sessionId) {
+        console.log('エラー発生後、フォールバック遷移を実行');
+        setTimeout(() => {
+          try {
+            goto(`/create?sessionId=${data.sessionId}`);
+          } catch (gotoError) {
+            console.error('フォールバック遷移も失敗:', gotoError);
+          }
+        }, 2000);
+      }
     }
   }
 
@@ -398,8 +469,15 @@
         }
 
         sk.windowResized = () => {
-          sk.resizeCanvas(sk.windowWidth, sk.windowHeight);
-          sk.redraw();
+          // LoadingTransitionが非アクティブな場合のみリサイズ処理を実行
+          if (!isInitialLoading && !isMiniLoading && !isTransitionLoading && p5Instance) {
+            try {
+              sk.resizeCanvas(sk.windowWidth, sk.windowHeight);
+              sk.redraw();
+            } catch (error) {
+              console.error('p5.js resize error:', error);
+            }
+          }
         };
       };
       p5Instance = new p5(sketch); // インスタンスの参照を保存
@@ -442,11 +520,13 @@
   on:complete={handleTransitionLoadingComplete}
 />
 
-<!-- <div class="debug-info">
+<div class="debug-info">
   <p>Session ID: {data.sessionId || 'なし'}</p>
   <p>Status: {statusMessage}</p>
   <p>Processing: {isProcessing ? 'Yes' : 'No'}</p>
-</div> -->
+  <p>Has Processed: {hasProcessedTurn ? 'Yes' : 'No'}</p>
+  <p>Transition Loading: {isTransitionLoading ? 'Yes' : 'No'}</p>
+</div>
 
 <style>
   :global(html), :global(body) {
