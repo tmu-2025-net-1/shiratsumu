@@ -3,14 +3,14 @@ import { error } from '@sveltejs/kit';
 
 export const ssr = false;
 
-export const load: PageLoad = async ({ params, url, fetch }) => {
-  const keyword = params.keyword;
-  const chars = url.searchParams.get('chars') ?? keyword;
-  const sessionId = url.searchParams.get('s') ?? null;
+export const load: PageLoad = async ({ url, fetch }) => {
+  const keyword = url.searchParams.get('q');
 
   if (!keyword) {
-    throw error(400, 'Keyword is required');
+    throw error(400, 'キーワードが必要です。URLの末尾に「?q=検索したい単語」を追加してください。');
   }
+
+  console.log(`[p5-test client load] 「${keyword}」の画像を取得します。`);
 
   try {
     const response = await fetch(`/api/get-image?keyword=${encodeURIComponent(keyword)}`);
@@ -21,16 +21,13 @@ export const load: PageLoad = async ({ params, url, fetch }) => {
     }
     
     const imageData = await response.json();
-    
+
     return {
-      img: imageData.img,
-      alt: imageData.alt,
-      q: keyword,
-      chars: chars,
-      sessionId: sessionId
+      imgUrl: imageData.img,
+      altText: imageData.alt
     };
   } catch (err: any) {
-    console.error('[ascii client load] 画像取得エラー:', err);
+    console.error('[p5-test client load] 画像取得エラー:', err);
     throw error(500, `画像の取得に失敗しました: ${err.message}`);
   }
 };
