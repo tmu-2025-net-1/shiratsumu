@@ -62,7 +62,7 @@
 						<p class="text-sm text-white mt-2 font-mono">Tokyo Metropolitan University, <br>Department of Industrial Art</p>
 
 					<!-- other products link -->
-					 <a href="https://lub.shiratsumu.jp" class="text-blue-500 hover:underline">lub.shiratsumu.jp(mada)</a>
+					 <a href="https://lab.shiratsumu.jp" class="text-blue-500 hover:underline">lab.shiratsumu.jp</a>
 				</div>
 			</div>
 		</div>

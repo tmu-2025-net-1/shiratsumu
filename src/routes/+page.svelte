@@ -876,7 +876,7 @@
         currentCol = drawStringAtRow('Shiritori', 'b', -2, 0, {r: 60, g: 60, b: 60, a: 200}, true);
 
         // . (cタイプ、同じ行で続く)
-        drawStringAtRow('.', 'c', -2, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
+        drawStringAtRow('. v2.0', 'c', -2, currentCol, {r: 120, g: 120, b: 120, a: 160}, false);
 
         // Bブロック（QRコードの下）の描画
         // QRコードの下の開始位置を計算
