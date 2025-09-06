@@ -1240,7 +1240,18 @@ $: if (browser && typeof window !== 'undefined') {
   }
 </script>
 
-<div id="qrContainer" bind:this={qrContainer}></div>
+<div id="qrContainer" bind:this={qrContainer}>
+  {#if sessionId && qrText}
+    <a 
+      href="/ascii/{encodeURIComponent(qrText)}?s={sessionId}" 
+      target="_blank"
+      rel="noopener noreferrer"
+      style="position: absolute; top: 10px; left: 10px; z-index: 1000; color: blue; text-decoration: underline;"
+    >
+      test link to /{encodeURIComponent(qrText)}?s={sessionId}
+    </a>
+  {/if}
+</div>
 
 <EditableText
   bind:this={editableTextInstance}

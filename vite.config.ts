@@ -4,6 +4,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	server: {
+		allowedHosts: true,  // ←トンネル検証中だけ有効にする
+		host: true,
+	},
 	test: {
 		projects: [
 			{
