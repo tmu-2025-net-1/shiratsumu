@@ -132,11 +132,17 @@
     p.textSize(fontSize);
     p.textAlign(p.CENTER, p.CENTER); // ASCIIアートと同じテキスト配置
     
+    // 背景グリッド描画の前に、テキストエリア全体の背景を描く（視認性向上とヒットエリア確保のため）
+    if (editingMode || (currentArray.length === 0 && showAddButton)) {
+        // もし必要なら背景色を描画
+    }
+
     for (let i = 0; i < currentArray.length; i++) {
-      const charX = x + i * cellSize;
-      const isHovered = p.mouseX > charX && p.mouseX < charX + cellSize && p.mouseY > y && p.mouseY < y + cellSize;
-      const isEditing = editingMode && i === (currentArray.length - 1);
-      const char = currentArray[i];
+        const charX = x + i * cellSize;
+        // マウス判定を厳密にするため、intにキャストするか考慮するが、p5はfloat座標も扱う
+        const isHovered = p.mouseX >= charX && p.mouseX < charX + cellSize && p.mouseY >= y && p.mouseY < y + cellSize;
+        const isEditing = editingMode; // 編集中なら全体的にハイライトしてもいいかもだが、とりあえず元のまま
+        const char = currentArray[i];
 
       // 空の文字や空白文字の場合は背景を描画しない
       if (char && char.trim() !== '') {
@@ -208,6 +214,19 @@
           startEditing();
           return true;
         }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * マウスがコントロール上にあるかどうかを返す
+   */
+  export function isMouseOver(p: any): boolean {
+    if (!p) return false;
+    for (const bound of bounds) {
+      if (p.mouseX > bound.x && p.mouseX < bound.x + bound.width && p.mouseY > bound.y && p.mouseY < bound.y + bound.height) {
+        return true;
       }
     }
     return false;

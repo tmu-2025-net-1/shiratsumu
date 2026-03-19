@@ -28,6 +28,7 @@
   let qrText = "";
   let ecLevel = "M";
   let qrMode = 'url'; // 'url' for join page URL, 'text' for original text
+  let customQrData = "https://example.com"; // Default for custom mode
   
   // CharSet management
   let baseCharSet = "ABCあいうえ◯▼잘자WXYZ0123456789"; // Original character set
@@ -58,8 +59,8 @@
 
     if (!sessionId) {
       console.error('セッションIDが提供されていません');
-      goto('/');
-      return;
+      // デバッグ用にリダイレクトを無効化
+      sessionId = 'demo';
     }
 
     // Firestoreのリアルタイム監視を設定（最新の会話テキストの文字数分の?をqrTextに設定）
@@ -176,16 +177,16 @@
     showControls = !showControls;
   }
 
+  function toggleQrMode() {
+    qrMode = qrMode === 'url' ? 'text' : 'url';
+    console.log("QR Mode toggled:", qrMode);
+  }
+
   // canvasのz-indexを制御するためのリアクティブステート
   $: if (canvasInstance) {
-  if (showControls) {
-    // Settingsパネルが開いている時：キャンバスを一番後ろに下げる
+    // 常にキャンバスを最背面に保つ
     canvasInstance.style('z-index', '-1');
-  } else {
-    // Settingsパネルが閉じている時：キャンバスを元の位置に戻す
-    canvasInstance.style('z-index', '1');
   }
-}
 
 
   function initP5Sketch() {
@@ -245,7 +246,8 @@
         updateResponsiveSizes();
         
         // Make sure canvas doesn't interfere with UI controls
-        canvas.style('z-index', '1');
+        // キャンバスを背面に配置して、UI要素（フッターなど）をさわれるようにする
+        canvas.style('z-index', '-1');
         
         // Initialize background grid
         initBackgroundGrid();
@@ -299,6 +301,33 @@
           // ripplesなどの描画処理
           drawRipples();
           updateRipples();
+
+          // マウスカーソル制御
+          let isHovering = false;
+          
+          // 既存のボタン判定
+          if (p.generateButtonBounds) {
+             const b = p.generateButtonBounds;
+             if (p.mouseX >= b.x && p.mouseX <= b.x + b.width && p.mouseY >= b.y && p.mouseY <= b.y + b.height) {
+                 isHovering = true;
+             }
+          }
+          if (p.navAreaBounds && qrData) {
+              const b = p.navAreaBounds;
+               if (p.mouseX >= b.x && p.mouseX <= b.x + b.width && p.mouseY >= b.y && p.mouseY <= b.y + b.height) {
+                 isHovering = true;
+             }
+          }
+          // EditableText判定
+          if (editableTextInstance && editableTextInstance.isMouseOver(p)) {
+              isHovering = true;
+          }
+          
+          if (isHovering) {
+              p.cursor(p.HAND);
+          } else {
+              p.cursor(p.ARROW);
+          }
       };
         
       function initBackgroundGrid() {
@@ -486,22 +515,29 @@
         p.pop();
       }
       
-      function renderQR() {
+      function renderQR(target: any = p, isForExport: boolean = false) {
           if (!qrData) return;
           
           const { qr, modules } = qrData;
           
           // Center the QR code and align with background grid
           let qrSize = modules * cellSize;
-          let offsetX = (p.width - qrSize) / 2;
-          let offsetY = (p.height - qrSize) / 2;
+          let offsetX = 0;
+          let offsetY = 0;
           
-          // Snap to grid alignment
-          offsetX = Math.round(offsetX / cellSize) * cellSize;
-          offsetY = Math.round(offsetY / cellSize) * cellSize;
+          if (!isForExport) {
+            offsetX = (p.width - qrSize) / 2;
+            offsetY = (p.height - qrSize) / 2;
+            
+            // Snap to grid alignment
+            offsetX = Math.round(offsetX / cellSize) * cellSize;
+            offsetY = Math.round(offsetY / cellSize) * cellSize;
+          }
           
-          p.push();
-          p.translate(offsetX, offsetY);
+          target.push();
+          if (!isForExport) {
+            target.translate(offsetX, offsetY);
+          }
           
           for (let r = 0; r < modules; r++) {
             for (let c = 0; c < modules; c++) {
@@ -511,26 +547,44 @@
               
               let bgColor, fgColor;
               if (isDark) {
-                bgColor = p.color(0, 0, 0);
-                fgColor = p.color(255, 255, 255, 220);
+                bgColor = target.color(0, 0, 0);
+                fgColor = target.color(255, 255, 255, 220);
               } else {
-                bgColor = p.color(255, 255, 255);
-                fgColor = p.color(150, 150, 150, 60);
+                if (isForExport) {
+                  // Export時は背景透明
+                  bgColor = target.color(255, 255, 255, 0); // 完全透明
+                  fgColor = target.color(150, 150, 150, 60);
+                } else {
+                  bgColor = target.color(255, 255, 255);
+                  fgColor = target.color(150, 150, 150, 60);
+                }
               }
               
-              p.fill(bgColor);
-              p.noStroke();
-              p.rect(x, y, cellSize, cellSize);
+              if (isForExport && !isDark) {
+                  // エクスポート時かつ明るいセル（背景）の場合は描画しない（透明にする場合）
+                  // 文字だけ薄く描画する
+              } else {
+                  target.fill(bgColor);
+                  target.noStroke();
+                  target.rect(x, y, cellSize, cellSize);
+              }
               
               let charIndex = (r * modules + c) % charSet.length;
               let ch = charSet[charIndex];
               
-              p.fill(fgColor);
-              p.textSize(fontSize);
-              p.text(ch, x + cellSize/2, y + cellSize/2);
+              target.fill(fgColor);
+              // Graphicsオブジェクトの場合はtextSizeなどの設定が必要
+              if (isForExport) {
+                 target.textSize(cellSize); // cellSizeと同じサイズで
+                 target.textAlign(target.CENTER, target.CENTER);
+              } else {
+                 target.textSize(fontSize);
+              }
+              
+              target.text(ch, x + cellSize/2, y + cellSize/2);
             }
           }
-          p.pop();
+          target.pop();
       }
 
       function drawGenerateButton() {
@@ -677,6 +731,18 @@
       }
       
       p.mousePressed = function() {
+          console.log('p.mousePressed called'); // Debug
+
+          // Check if click is inside the footer
+          const footerElement = document.querySelector('footer');
+          if (footerElement) {
+              const rect = footerElement.getBoundingClientRect();
+              if (p.mouseX >= rect.left && p.mouseX <= rect.right && p.mouseY >= rect.top && p.mouseY <= rect.bottom) {
+                  console.log('Click inside footer, allowing default behavior');
+                  return true;
+              }
+          }
+
           // Button click logic as in original
           const toggleButton = document.querySelector('#toggleControls');
           if (toggleButton) {
@@ -727,6 +793,26 @@
       p.generateQR = function() {
         generateQR();
       };
+
+      p.downloadQRImage = function() {
+          if (!qrData) return;
+          const { modules } = qrData;
+          // Calculate needed size
+          const size = modules * cellSize;
+          
+          let pg = p.createGraphics(size, size);
+          
+          // フォントなどの設定
+          pg.textAlign(p.CENTER, p.CENTER);
+          pg.textFont('monospace');
+          pg.background(0, 0, 0, 0); // 透明背景で初期化
+          
+          // オフスクリーンバッファに描画
+          renderQR(pg, true);
+          
+          // Imageとして保存
+          p.save(pg, 'my-ascii-qr.png');
+      };
       
       // Method to update the settings
       p.updateSettings = function() {
@@ -741,7 +827,9 @@
         
         let qrCodeData: string;
         if (qrMode === 'text') {
-          qrCodeData = qrText;
+          // In text mode, use the customQrData for the QR content,
+          // and qrText (via charSet) for the visual representation.
+          qrCodeData = customQrData || " ";
         } else {
           qrCodeData = `${location.origin}/join?s=${sessionId}`;
         }
@@ -772,9 +860,13 @@
     }
   }
 
-  function downloadImage() {
-    if (p5Instance) {
-      p5Instance.save('grid_ascii_qr.png');
+  function downloadOriginalQR() {
+    console.log("Download button clicked");
+    if (p5Instance && p5Instance.downloadQRImage) {
+        console.log("Calling p5Instance.downloadQRImage");
+        p5Instance.downloadQRImage();
+    } else {
+        console.error("p5Instance or downloadQRImage not available", !!p5Instance);
     }
   }
 
@@ -865,6 +957,7 @@
     (window as any).navigateToAscii = navigateToAscii;
     (window as any).handleGenerateClick = generateQR;
     (window as any).toggleSettings = toggleSettings;
+    (window as any).toggleQrMode = toggleQrMode;
   }
 </script>
 
@@ -879,6 +972,18 @@
 
 <footer>
     <a href="result?s={sessionId}">show result</a>
+    <button class="secret-toggle" on:click={toggleQrMode} title="Toggle QR Mode">
+        {qrMode === 'url' ? '🔗' : '📝'}
+    </button>
+    {#if qrMode === 'text'}
+        <input type="text" bind:value={customQrData} on:input={generateQR} class="data-input" placeholder="QR Link/Data" />
+    {/if}
+    
+    <div style="flex-grow: 1;"></div>
+    
+    <button class="save-button" on:click={downloadOriginalQR} title="Download Transparent QR">
+        💾
+    </button>
 </footer>
 
 <!-- Page transition effect -->
@@ -915,6 +1020,54 @@
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         z-index: 1000;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .secret-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        font-size: 1.2rem;
+        opacity: 0.2;
+        transition: opacity 0.2s;
+    }
+    
+    .secret-toggle:hover {
+        opacity: 1;
+    }
+
+    .data-input {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.9rem;
+        width: 200px;
+        pointer-events: auto;
+    }
+    
+    .save-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 5px;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+        pointer-events: auto;
+    }
+    
+    .save-button:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    
+    .save-button:active {
+        transform: scale(0.9);
+        opacity: 0.8;
     }
 
 </style>
