@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
@@ -6,8 +6,13 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		// adapter-auto detects Cloudflare Pages automatically
-		adapter: adapter(),
+		adapter: adapter({
+			routes: {
+				// Keep Functions enabled for all routes without include/exclude overlap.
+				include: ['/*'],
+				exclude: []
+			}
+		}),
 		
 		// Service worker configuration
 		serviceWorker: {

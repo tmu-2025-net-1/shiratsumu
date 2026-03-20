@@ -1,4 +1,3 @@
 # Redirects for Cloudflare Pages
 
-# SPA fallback
-/*    /index.html   200
+# No custom redirects required; routing is handled by SvelteKit + Cloudflare Worker.

@@ -1,9 +1,7 @@
-# Cloudflare Pages configuration
-# This file is used for Cloudflare Pages Functions, not for direct deployment
-# The main deployment is handled through Cloudflare Pages dashboard
-
 name = "shiratsumu"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".svelte-kit/cloudflare"
 
 # Pages-specific configuration
 [env.production.vars]
