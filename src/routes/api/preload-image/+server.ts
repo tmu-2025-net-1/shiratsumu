@@ -64,13 +64,14 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 
     // Step 3: Environment check
     step = 'environment check';
-    const isCloudflarePages = process.env.CF_PAGES === '1' || !!process.env.CF_PAGES_BRANCH;
+    const processEnv = typeof process !== 'undefined' ? process.env : undefined;
+    const isCloudflarePages = processEnv?.CF_PAGES === '1' || !!processEnv?.CF_PAGES_BRANCH;
     const environment = {
       isCloudflare: isCloudflarePages,
-      nodeVersion: process.version,
-      platform: process.platform,
-      cfPages: process.env.CF_PAGES,
-      cfBranch: process.env.CF_PAGES_BRANCH
+      nodeVersion: typeof process !== 'undefined' ? process.version : 'n/a',
+      platform: typeof process !== 'undefined' ? process.platform : 'n/a',
+      cfPages: processEnv?.CF_PAGES ?? null,
+      cfBranch: processEnv?.CF_PAGES_BRANCH ?? null
     };
     console.log('[preload-image] Environment info:', environment);
 

@@ -4,7 +4,8 @@ import { getCachedImage, setCachedImage, updateLastUsed } from './image-cache';
 
 export async function getUnsplashImage(keyword: string, fetch: typeof globalThis.fetch) {
   const q = keyword.toLowerCase();
-  const isCloudflarePages = process.env.CF_PAGES === '1' || !!process.env.CF_PAGES_BRANCH;
+  const processEnv = typeof process !== 'undefined' ? process.env : undefined;
+  const isCloudflarePages = processEnv?.CF_PAGES === '1' || !!processEnv?.CF_PAGES_BRANCH;
   
   console.log(`[unsplash] Processing keyword: ${q}, Environment: ${isCloudflarePages ? 'Cloudflare' : 'Local'}`);
 

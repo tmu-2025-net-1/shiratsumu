@@ -117,3 +117,48 @@ The project includes a Grid-Style ASCII QR Code generator that renders QR codes 
 このコンポーネントはSvelteKit環境でp5.jsを使用しており、クライアントサイドでのみレンダリングされます。サーバーサイドレンダリングは`+page.ts`ファイルで無効化されています。
 
 QRコード生成には`qrcode-generator`ライブラリが使用されています。
+
+## Diagnostics API
+
+公開環境で環境変数の反映状態を確認するために、診断APIを用意しています。
+
+- Endpoint: `GET /api/diagnostics/env`
+- 返却内容:
+  - `runtime.environment` (`cloudflare` or `local`)
+  - `variables.UNSPLASH_KEY.configured`（設定有無）
+  - `variables.GEMINI_API_KEY.configured`（設定有無）
+  - `variables.*.length`（値の文字数のみ、値自体は非表示）
+
+### 使い方
+
+ローカル:
+
+```bash
+curl -s http://localhost:5173/api/diagnostics/env | jq
+```
+
+公開環境:
+
+```bash
+curl -s https://ascii-qr.pages.dev/api/diagnostics/env | jq
+```
+
+`DIAGNOSTIC_TOKEN` を設定している場合は、ヘッダーかクエリで渡してください。
+
+```bash
+curl -s \
+  -H "x-diagnostic-token: <DIAGNOSTIC_TOKEN>" \
+  https://ascii-qr.pages.dev/api/diagnostics/env | jq
+```
+
+ブラウザで直接開く場合:
+
+```text
+https://ascii-qr.pages.dev/api/diagnostics/env
+```
+
+クエリでトークンを渡す場合:
+
+```text
+https://ascii-qr.pages.dev/api/diagnostics/env?token=<DIAGNOSTIC_TOKEN>
+```

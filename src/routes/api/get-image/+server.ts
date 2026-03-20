@@ -23,7 +23,8 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 
     // Step 2: Environment detection
     step = 'environment detection';
-    const isCloudflarePages = process.env.CF_PAGES === '1' || !!process.env.CF_PAGES_BRANCH;
+    const processEnv = typeof process !== 'undefined' ? process.env : undefined;
+    const isCloudflarePages = processEnv?.CF_PAGES === '1' || !!processEnv?.CF_PAGES_BRANCH;
     console.log(`[get-image] Environment: ${isCloudflarePages ? 'Cloudflare Pages' : 'Local'}`);
 
     // Step 3: Image acquisition with timeout
